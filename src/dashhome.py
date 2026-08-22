@@ -63,14 +63,14 @@ def create_schedule_view(page: ft.Page, username: str = ""):
 
     def open_wakeup(e):
         if hasattr(page, "open"):
-            page.open(wakeup_picker)
+            page.run_task(page.open, wakeup_picker)  # Safely runs the coroutine synchronously
         else:
             wakeup_picker.open = True
             page.update()
 
     def open_bedtime(e):
         if hasattr(page, "open"):
-            page.open(bedtime_picker)
+            page.run_task(page.open, bedtime_picker)  # Safely runs the coroutine synchronously
         else:
             bedtime_picker.open = True
             page.update()
@@ -281,7 +281,7 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
 
             try:
                 response = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
+                    model="qwen/qwen3.6-27b",
                     messages=[
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": prompt_text}
@@ -289,6 +289,13 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
                     temperature=0.3
                 )
                 ai_reply = response.choices[0].message.content
+
+                # FIX: Clean out the model's markdown thinking blocks before displaying
+                import re
+                ai_reply = re.sub(r"<think>.*?</think>", "", ai_reply, flags=re.DOTALL)
+                ai_reply = re.sub(r"<thinking>.*?</thinking>", "", ai_reply, flags=re.DOTALL)
+                ai_reply = ai_reply.strip()  # Remove residual leading/trailing whitespaces
+
                 add_message("Digital Helper", ai_reply, is_user=False)
             except Exception as ex:
                 add_message("System", f"Error connecting to AI: {ex}", is_user=False)
