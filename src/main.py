@@ -1,8 +1,8 @@
 # main.py
 import flet as ft
-from background import start_background_monitor
-from checkup import create_confirm_view
-from database import users_db
+from src.background import start_background_monitor
+from src.checkup import create_confirm_view
+from src.database import users_db
 
 
 def initialize_user_session(page: ft.Page, username: str):
