@@ -1,49 +1,90 @@
 # login.py
 import flet as ft
-from src.database import users_db
+
+from database import users_db
+from theme import (
+    C,
+    apply_theme,
+    auth_banner,
+    card,
+    primary_button,
+    text_field,
+)
 
 
 def create_login_view(page: ft.Page, on_success_callback, on_switch_to_register):
-  page.title = "Safety App - Login"
-  page.clean()
+    page.clean()
+    page.overlay.clear()
+    page.navigation_bar = None
+    apply_theme(page)
+    page.title = "Safety App - Login"
+    page.vertical_alignment = ft.MainAxisAlignment.START
+    page.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
 
-  log_status = ft.Text("", size=16)
-  log_username = ft.TextField(label="Username", width=300, autofocus=True)
-  log_password = ft.TextField(
-      label="Password", password=True, can_reveal_password=True, width=300
-  )
+    form_width = min((page.width or 440) - 40, 420)
 
-  def handle_login(e):
-    entered_user = log_username.value
-    entered_pass = log_password.value
+    log_status = ft.Text("", size=13, text_align=ft.TextAlign.CENTER)
+    log_username = text_field("Username", ft.Icons.PERSON_OUTLINE, autofocus=True)
+    log_password = text_field("Password", ft.Icons.LOCK_OUTLINE, password=True)
 
-    user_data = users_db.get(entered_user)
-    if user_data and isinstance(user_data, dict) and user_data.get("password") == entered_pass:
-      log_status.value = "Login Successful! Loading dashboard..."
-      log_status.color = "green"
-      page.update()
-      on_success_callback(entered_user)
-    else:
-      log_status.value = "Invalid username or password."
-      log_status.color = "red"
-      page.update()
+    def handle_login(e):
+        entered_user = log_username.value
+        entered_pass = log_password.value
 
-  login_button = ft.ElevatedButton(
-      content="Log In", color="white", bgcolor="blue", width=300, on_click=handle_login
-  )
+        user_data = users_db.get(entered_user)
+        if user_data and isinstance(user_data, dict) and user_data.get("password") == entered_pass:
+            log_status.value = "Login successful! Loading dashboard..."
+            log_status.color = C.OK
+            page.update()
+            on_success_callback(entered_user)
+        else:
+            log_status.value = "Invalid username or password."
+            log_status.color = C.ERROR
+            page.update()
 
-  register_switch_button = ft.TextButton(
-      content="Don't have an account? Register", on_click=on_switch_to_register
-  )
+    log_password.on_submit = handle_login
 
-  page.add(
-      ft.Text("Welcome Back", size=24, weight=ft.FontWeight.BOLD),
-      ft.Container(height=10),
-      log_username,
-      log_password,
-      ft.Container(height=10),
-      login_button,
-      register_switch_button,
-      log_status,
-  )
-  page.update()
+    form = card(
+        ft.Column(
+            [
+                ft.Text("Log in", size=20, weight=ft.FontWeight.W_700, color=C.INK),
+                log_username,
+                log_password,
+                ft.Container(height=2),
+                ft.Row([primary_button("Log in", handle_login, expand=True)]),
+                log_status,
+            ],
+            spacing=14,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+        ),
+        padding=24,
+    )
+
+    page.add(
+        ft.Column(
+            [
+                auth_banner("Safety App", "Your safety net, always one tap away."),
+                ft.Container(height=20),
+                ft.Row(
+                    [ft.Container(content=form, width=form_width)],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                ),
+                ft.Row(
+                    [
+                        ft.TextButton(
+                            content="Don't have an account? Register",
+                            on_click=on_switch_to_register,
+                            style=ft.ButtonStyle(color=C.PRIMARY),
+                        )
+                    ],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                ),
+                ft.Container(height=16),
+            ],
+            spacing=0,
+            scroll=ft.ScrollMode.AUTO,
+            expand=True,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+        )
+    )
+    page.update()

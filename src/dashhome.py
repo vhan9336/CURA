@@ -7,9 +7,21 @@ import flet as ft
 from openai import OpenAI
 
 from database import users_db
+from theme import (
+    C,
+    apply_theme,
+    card,
+    fmt_time,
+    hero_gradient,
+    icon_badge,
+    is_dark,
+    page_header,
+    primary_button,
+    set_dark,
+)
 
 # ---------------------------------------------------------------------------
-# AI client  (key now comes from an environment variable, never from source)
+# AI client  (key comes from an environment variable, never from source)
 #   Windows:   setx GROQ_API_KEY "your-new-key"
 #   macOS/Lin: export GROQ_API_KEY="your-new-key"
 # ---------------------------------------------------------------------------
@@ -31,79 +43,13 @@ Strict Guidelines:
 - Always maintain a supportive, clear, and concise tone.
 """
 
-# ---------------------------------------------------------------------------
-# Design tokens
-# ---------------------------------------------------------------------------
-PRIMARY = ft.Colors.TEAL_700
-PRIMARY_SOFT = ft.Colors.TEAL_50
-INK = ft.Colors.BLUE_GREY_900
-MUTED = ft.Colors.BLUE_GREY_500
-SURFACE = ft.Colors.WHITE
-BACKGROUND = "#F4F7F7"
+# Chat history per user, kept here so it survives theme changes and tab switches.
+CHATS = {}
 
 
-def apply_theme(page: ft.Page):
-    page.theme = ft.Theme(color_scheme_seed=ft.Colors.TEAL)
-    page.theme_mode = ft.ThemeMode.LIGHT
-    page.bgcolor = BACKGROUND
-    page.padding = 0
-
-
-def card(content, bgcolor=SURFACE, padding=18, on_click=None):
-    """A soft rounded surface used for all grouped content."""
-    return ft.Container(
-        content=content,
-        bgcolor=bgcolor,
-        padding=padding,
-        border_radius=16,
-        on_click=on_click,
-        shadow=ft.BoxShadow(
-            blur_radius=14,
-            color=ft.Colors.with_opacity(0.06, ft.Colors.BLACK),
-            offset=ft.Offset(0, 3),
-        ),
-    )
-
-
-def page_header(title: str, subtitle: str = ""):
-    controls = [ft.Text(title, size=26, weight=ft.FontWeight.W_700, color=INK)]
-    if subtitle:
-        controls.append(ft.Text(subtitle, size=14, color=MUTED))
-    return ft.Column(controls, spacing=4)
-
-
-def icon_badge(icon, color=PRIMARY, bg=PRIMARY_SOFT):
-    return ft.Container(
-        content=ft.Icon(icon, color=color, size=22),
-        bgcolor=bg,
-        width=44,
-        height=44,
-        border_radius=12,
-        alignment=ft.Alignment(0, 0),
-    )
-
-
-def primary_button(text, on_click, icon=None, expand=False):
-    return ft.FilledButton(
-        content=text,
-        icon=icon,
-        on_click=on_click,
-        expand=expand,
-        height=50,
-        style=ft.ButtonStyle(
-            shape=ft.RoundedRectangleBorder(radius=14),
-            bgcolor=PRIMARY,
-            color=ft.Colors.WHITE,
-        ),
-    )
-
-
-def fmt_time(value, default: str) -> str:
-    """users_db stores datetime.time objects; show them as '07:00 AM'."""
-    try:
-        return value.strftime("%I:%M %p")
-    except Exception:
-        return default
+def _user_dict(username: str) -> dict:
+    data = users_db.get(username)
+    return data if isinstance(data, dict) else {}
 
 
 # ---------------------------------------------------------------------------
@@ -111,20 +57,21 @@ def fmt_time(value, default: str) -> str:
 # ---------------------------------------------------------------------------
 def create_schedule_view(page: ft.Page, username: str = ""):
     page.clean()
+    page.overlay.clear()
     page.navigation_bar = None
     apply_theme(page)
     page.title = "Safety App - Schedule"
     page.vertical_alignment = ft.MainAxisAlignment.START
     page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
 
-    saved = users_db.get(username, {}) if isinstance(users_db.get(username), dict) else {}
+    saved = _user_dict(username)
     state = {
         "wakeup": fmt_time(saved.get("wakeup_time"), "07:00 AM"),
         "bedtime": fmt_time(saved.get("bedtime_time"), "10:00 PM"),
     }
 
-    wakeup_text = ft.Text(state["wakeup"], size=30, weight=ft.FontWeight.W_700, color=INK)
-    bedtime_text = ft.Text(state["bedtime"], size=30, weight=ft.FontWeight.W_700, color=INK)
+    wakeup_text = ft.Text(state["wakeup"], size=30, weight=ft.FontWeight.W_700, color=C.INK)
+    bedtime_text = ft.Text(state["bedtime"], size=30, weight=ft.FontWeight.W_700, color=C.INK)
 
     def on_wakeup(e):
         if wakeup_picker.value:
@@ -161,11 +108,11 @@ def create_schedule_view(page: ft.Page, username: str = ""):
                 [
                     icon_badge(icon),
                     ft.Column(
-                        [ft.Text(label, size=13, color=MUTED), time_text],
+                        [ft.Text(label, size=13, color=C.MUTED), time_text],
                         spacing=2,
                         expand=True,
                     ),
-                    ft.Icon(ft.Icons.EDIT_OUTLINED, color=MUTED, size=20),
+                    ft.Icon(ft.Icons.EDIT_OUTLINED, color=C.MUTED, size=20),
                 ],
                 spacing=14,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -177,7 +124,7 @@ def create_schedule_view(page: ft.Page, username: str = ""):
         try:
             wakeup_obj = datetime.strptime(state["wakeup"], "%I:%M %p").time()
             bedtime_obj = datetime.strptime(state["bedtime"], "%I:%M %p").time()
-            if username not in users_db or not isinstance(users_db[username], dict):
+            if not isinstance(users_db.get(username), dict):
                 users_db[username] = {}
             users_db[username]["wakeup_time"] = wakeup_obj
             users_db[username]["bedtime_time"] = bedtime_obj
@@ -216,24 +163,25 @@ def create_schedule_view(page: ft.Page, username: str = ""):
 # ---------------------------------------------------------------------------
 # Main dashboard
 # ---------------------------------------------------------------------------
-def open_main_dashboard(page: ft.Page, username: str = ""):
+def open_main_dashboard(page: ft.Page, username: str = "", start_index: int = 0):
+    user_info = _user_dict(username)
+    if "dark_mode" in user_info:
+        set_dark(user_info["dark_mode"])
+
     page.clean()
+    page.overlay.clear()
     apply_theme(page)
     page.title = "Safety App - Dashboard"
     page.vertical_alignment = ft.MainAxisAlignment.START
     page.horizontal_alignment = ft.CrossAxisAlignment.START
 
-    user_info = (
-        users_db.get(username, {}) if isinstance(users_db.get(username), dict) else {}
-    )
-
     content_area = ft.Container(padding=ft.Padding(20, 20, 20, 0), expand=True)
 
-    # Chat history lives here so it survives switching tabs.
-    transcript = []  # list of (sender, text, is_user)
-    api_history = []  # list of {"role": ..., "content": ...}
+    chat_state = CHATS.setdefault(username, {"transcript": [], "api": []})
+    transcript = chat_state["transcript"]  # (sender, text, is_user)
+    api_history = chat_state["api"]  # {"role": ..., "content": ...}
 
-    # ----- Info ------------------------------------------------------------
+    # ----- Home ------------------------------------------------------------
     def load_info_view():
         def feature(icon, title, body):
             return ft.Row(
@@ -241,8 +189,8 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
                     icon_badge(icon),
                     ft.Column(
                         [
-                            ft.Text(title, size=15, weight=ft.FontWeight.W_600, color=INK),
-                            ft.Text(body, size=13, color=MUTED),
+                            ft.Text(title, size=15, weight=ft.FontWeight.W_600, color=C.INK),
+                            ft.Text(body, size=13, color=C.MUTED),
                         ],
                         spacing=2,
                         expand=True,
@@ -258,23 +206,18 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
                 card(
                     ft.Column(
                         [
-                            ft.Text(
-                                "870,000",
-                                size=40,
-                                weight=ft.FontWeight.W_800,
-                                color=ft.Colors.WHITE,
-                            ),
+                            ft.Text("870,000", size=42, weight=ft.FontWeight.W_800, color=ft.Colors.WHITE),
                             ft.Text(
                                 "people pass away unnoticed each year because they couldn't "
                                 "reach help in time. This app is here to change that.",
                                 size=14,
-                                color=ft.Colors.TEAL_50,
+                                color=C.HERO_TEXT,
                             ),
                         ],
                         spacing=6,
                     ),
-                    bgcolor=PRIMARY,
-                    padding=22,
+                    gradient=hero_gradient(),
+                    padding=24,
                 ),
                 card(
                     ft.Column(
@@ -298,6 +241,7 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
                         spacing=18,
                     )
                 ),
+                ft.Container(height=8),
             ],
             spacing=16,
             scroll=ft.ScrollMode.AUTO,
@@ -305,15 +249,23 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
         page.update()
 
     # ----- Settings --------------------------------------------------------
+    def toggle_dark(e):
+        value = bool(e.control.value)
+        set_dark(value)
+        if not isinstance(users_db.get(username), dict):
+            users_db[username] = {}
+        users_db[username]["dark_mode"] = value
+        open_main_dashboard(page, username, start_index=1)
+
     def load_settings_view():
         def info_row(icon, label, value):
             return ft.Row(
                 [
-                    ft.Icon(icon, color=MUTED, size=20),
+                    ft.Icon(icon, color=C.MUTED, size=20),
                     ft.Column(
                         [
-                            ft.Text(label, size=12, color=MUTED),
-                            ft.Text(str(value), size=15, color=INK, selectable=True),
+                            ft.Text(label, size=12, color=C.MUTED),
+                            ft.Text(str(value), size=15, color=C.INK, selectable=True),
                         ],
                         spacing=1,
                         expand=True,
@@ -322,18 +274,41 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
                 spacing=14,
             )
 
-        wake = fmt_time(user_info.get("wakeup_time"), "Not set")
-        bed = fmt_time(user_info.get("bedtime_time"), "Not set")
+        def section_title(text):
+            return ft.Text(text, size=15, weight=ft.FontWeight.W_600, color=C.INK)
+
+        info = _user_dict(username)
+        wake = fmt_time(info.get("wakeup_time"), "Not set")
+        bed = fmt_time(info.get("bedtime_time"), "Not set")
 
         content_area.content = ft.Column(
             [
                 page_header("Settings", "Your account and check-in details."),
                 card(
+                    ft.Row(
+                        [
+                            icon_badge(ft.Icons.DARK_MODE_OUTLINED),
+                            ft.Column(
+                                [
+                                    ft.Text("Dark mode", size=15, weight=ft.FontWeight.W_600, color=C.INK),
+                                    ft.Text("Easier on the eyes at night", size=12, color=C.MUTED),
+                                ],
+                                spacing=2,
+                                expand=True,
+                            ),
+                            ft.Switch(value=is_dark(), on_change=toggle_dark),
+                        ],
+                        spacing=14,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    )
+                ),
+                card(
                     ft.Column(
                         [
+                            section_title("Account"),
                             info_row(ft.Icons.PERSON_OUTLINE, "Username", username or "N/A"),
-                            info_row(ft.Icons.MAIL_OUTLINE, "Email", user_info.get("email", "N/A")),
-                            info_row(ft.Icons.PHONE_OUTLINED, "Phone", user_info.get("phone", "N/A")),
+                            info_row(ft.Icons.MAIL_OUTLINE, "Email", info.get("email", "N/A")),
+                            info_row(ft.Icons.PHONE_OUTLINED, "Phone", info.get("phone", "N/A")),
                         ],
                         spacing=16,
                     )
@@ -341,9 +316,9 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
                 card(
                     ft.Column(
                         [
-                            ft.Text("Emergency contacts", size=15, weight=ft.FontWeight.W_600, color=INK),
-                            info_row(ft.Icons.SHIELD_OUTLINED, "Contact 1", user_info.get("e_contact1", "N/A")),
-                            info_row(ft.Icons.SHIELD_OUTLINED, "Contact 2", user_info.get("e_contact2", "N/A")),
+                            section_title("Emergency contacts"),
+                            info_row(ft.Icons.SHIELD_OUTLINED, "Contact 1", info.get("e_contact1", "N/A")),
+                            info_row(ft.Icons.SHIELD_OUTLINED, "Contact 2", info.get("e_contact2", "N/A")),
                         ],
                         spacing=16,
                     )
@@ -351,7 +326,7 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
                 card(
                     ft.Column(
                         [
-                            ft.Text("Daily schedule", size=15, weight=ft.FontWeight.W_600, color=INK),
+                            section_title("Daily schedule"),
                             info_row(ft.Icons.WB_SUNNY_OUTLINED, "Wake-up", wake),
                             info_row(ft.Icons.NIGHTLIGHT_OUTLINED, "Bedtime", bed),
                             ft.OutlinedButton(
@@ -367,19 +342,19 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
                 card(
                     ft.Row(
                         [
-                            ft.Icon(ft.Icons.LOCK_OUTLINE, color=PRIMARY, size=20),
+                            ft.Icon(ft.Icons.LOCK_OUTLINE, color=C.PRIMARY, size=20),
                             ft.Text(
                                 "The app listens in the background only to detect abrupt changes "
                                 "in volume. Audio is never stored and conversations are never listened to.",
                                 size=12,
-                                color=INK,
+                                color=C.INK,
                                 expand=True,
                             ),
                         ],
                         spacing=12,
                         vertical_alignment=ft.CrossAxisAlignment.START,
                     ),
-                    bgcolor=PRIMARY_SOFT,
+                    bgcolor=C.PRIMARY_SOFT,
                     padding=16,
                 ),
                 ft.Container(height=8),
@@ -405,12 +380,13 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
                             border_radius=12,
                             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
                         ),
-                        ft.Text(title, size=16, weight=ft.FontWeight.W_600, color=INK),
-                        ft.Text(description, size=13, color=MUTED),
+                        ft.Text(title, size=16, weight=ft.FontWeight.W_600, color=C.INK),
+                        ft.Text(description, size=13, color=C.MUTED),
                         ft.TextButton(
                             content="Read article",
                             icon=ft.Icons.OPEN_IN_NEW,
                             on_click=lambda e: page.launch_url(link),
+                            style=ft.ButtonStyle(color=C.PRIMARY),
                         ),
                     ],
                     spacing=8,
@@ -431,7 +407,7 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
                     "https://www.cdc.gov/social-connectedness/data-research/promising-approaches/index.html",
                 ),
                 resource_card(
-                    "https://fastly.picsum.photos/id/13/2500/1667.jpg?hmac=SoX9UoHhN8HyklRA4A3vcCWJMVtiBXUg0W4ljWTor7s",
+                    "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=600&auto=format&fit=crop&q=60",
                     "Coping with loneliness",
                     "Practical ways to cope with loneliness and build connections.",
                     "https://www.mentalhealth.org.uk/explore-mental-health/a-z-topics/loneliness",
@@ -447,31 +423,40 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
     def load_chat_view():
         bubble_width = min((page.width or 400) * 0.75, 320)
 
-        chat_list = ft.ListView(expand=True, spacing=10, auto_scroll=True, padding=ft.Padding(0, 8, 0, 8))
+        chat_list = ft.ListView(
+            expand=True, spacing=10, auto_scroll=True, padding=ft.Padding(0, 8, 0, 8)
+        )
 
         def build_bubble(sender: str, text: str, is_user: bool):
+            if is_user:
+                radius = ft.BorderRadius(18, 18, 18, 4)
+                bg, fg = C.PRIMARY, C.ON_PRIMARY
+                label_color = ft.Colors.with_opacity(0.75, C.ON_PRIMARY)
+                shadow = None
+            else:
+                radius = ft.BorderRadius(18, 18, 4, 18)
+                bg, fg, label_color = C.SURFACE, C.INK, C.MUTED
+                shadow = ft.BoxShadow(
+                    blur_radius=10,
+                    color=ft.Colors.with_opacity(C.SHADOW, ft.Colors.BLACK),
+                    offset=ft.Offset(0, 2),
+                )
             return ft.Row(
                 [
                     ft.Container(
                         content=ft.Column(
                             [
-                                ft.Text(sender, size=11, weight=ft.FontWeight.W_600,
-                                        color=ft.Colors.TEAL_50 if is_user else MUTED),
-                                ft.Text(text, size=14, selectable=True,
-                                        color=ft.Colors.WHITE if is_user else INK),
+                                ft.Text(sender, size=11, weight=ft.FontWeight.W_600, color=label_color),
+                                ft.Text(text, size=14, selectable=True, color=fg),
                             ],
                             tight=True,
                             spacing=3,
                         ),
-                        bgcolor=PRIMARY if is_user else SURFACE,
+                        bgcolor=bg,
                         padding=ft.Padding(14, 10, 14, 10),
-                        border_radius=ft.BorderRadius(18, 18, 4 if is_user else 18, 18 if is_user else 4),
+                        border_radius=radius,
                         width=bubble_width,
-                        shadow=None if is_user else ft.BoxShadow(
-                            blur_radius=8,
-                            color=ft.Colors.with_opacity(0.05, ft.Colors.BLACK),
-                            offset=ft.Offset(0, 2),
-                        ),
+                        shadow=shadow,
                     )
                 ],
                 alignment=ft.MainAxisAlignment.END if is_user else ft.MainAxisAlignment.START,
@@ -481,21 +466,22 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
             [
                 ft.Container(
                     content=ft.Row(
-                        [ft.ProgressRing(width=14, height=14, stroke_width=2),
-                         ft.Text("Thinking...", size=13, color=MUTED)],
+                        [
+                            ft.ProgressRing(width=14, height=14, stroke_width=2),
+                            ft.Text("Thinking...", size=13, color=C.MUTED),
+                        ],
                         spacing=10,
                         tight=True,
                     ),
-                    bgcolor=SURFACE,
+                    bgcolor=C.SURFACE,
                     padding=ft.Padding(14, 10, 14, 10),
                     border_radius=18,
                 )
             ]
         )
 
-        def add_message(sender, text, is_user, remember=True):
-            if remember:
-                transcript.append((sender, text, is_user))
+        def add_message(sender, text, is_user):
+            transcript.append((sender, text, is_user))
             chat_list.controls.append(build_bubble(sender, text, is_user))
             page.update()
 
@@ -517,7 +503,8 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
                 ai_reply = re.sub(r"<thinking>.*?</thinking>", "", ai_reply, flags=re.DOTALL).strip()
 
                 api_history.append({"role": "assistant", "content": ai_reply})
-                chat_list.controls.remove(typing_row)
+                if typing_row in chat_list.controls:
+                    chat_list.controls.remove(typing_row)
                 add_message("Digital Helper", ai_reply, False)
             except Exception as ex:
                 if typing_row in chat_list.controls:
@@ -540,8 +527,8 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
 
         def suggestion(text):
             return ft.Container(
-                content=ft.Text(text, size=13, color=PRIMARY),
-                bgcolor=PRIMARY_SOFT,
+                content=ft.Text(text, size=13, color=C.PRIMARY),
+                bgcolor=C.PRIMARY_SOFT,
                 padding=ft.Padding(14, 8, 14, 8),
                 border_radius=20,
                 on_click=lambda e: ask_ai(text),
@@ -552,20 +539,20 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
             expand=True,
             border_radius=24,
             filled=True,
-            bgcolor=SURFACE,
-            border_color=ft.Colors.TRANSPARENT,
+            bgcolor=C.SURFACE,
+            border_color=C.BORDER,
+            focused_border_color=C.PRIMARY,
             content_padding=ft.Padding(18, 12, 18, 12),
             on_submit=send_message,
         )
         send_button = ft.IconButton(
             icon=ft.Icons.SEND_ROUNDED,
-            icon_color=ft.Colors.WHITE,
-            bgcolor=PRIMARY,
+            icon_color=C.ON_PRIMARY,
+            bgcolor=C.PRIMARY,
             tooltip="Send message",
             on_click=send_message,
         )
 
-        # Restore earlier messages, or show a friendly starting point.
         if transcript:
             for sender, text, is_user in transcript:
                 chat_list.controls.append(build_bubble(sender, text, is_user))
@@ -577,20 +564,17 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
                             "Hi, I'm here to help with the app, find nearby care, "
                             "or just talk. What's on your mind?",
                             size=14,
-                            color=MUTED,
+                            color=C.MUTED,
                         ),
                         ft.Row(
                             [
                                 suggestion("How do check-ups work?"),
                                 suggestion("Find a pharmacy"),
+                                suggestion("I'm feeling stressed"),
                             ],
                             wrap=True,
                             spacing=8,
                             run_spacing=8,
-                        ),
-                        ft.Row(
-                            [suggestion("I'm feeling stressed")],
-                            wrap=True,
                         ),
                     ],
                     spacing=12,
@@ -601,8 +585,11 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
             [
                 page_header("Digital helper"),
                 chat_list,
-                ft.Row([user_input, send_button], spacing=8,
-                       vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Row(
+                    [user_input, send_button],
+                    spacing=8,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
                 ft.Container(height=8),
             ],
             expand=True,
@@ -617,9 +604,9 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
         views[e.control.selected_index]()
 
     page.navigation_bar = ft.NavigationBar(
-        selected_index=0,
-        bgcolor=SURFACE,
-        indicator_color=PRIMARY_SOFT,
+        selected_index=start_index,
+        bgcolor=C.SURFACE,
+        indicator_color=C.PRIMARY_SOFT,
         on_change=on_nav_change,
         destinations=[
             ft.NavigationBarDestination(
@@ -638,5 +625,5 @@ def open_main_dashboard(page: ft.Page, username: str = ""):
     )
 
     page.add(ft.SafeArea(expand=True, content=content_area))
-    load_info_view()
+    views[start_index]()
     page.update()

@@ -1,14 +1,14 @@
 # ui.py
 import flet as ft
 import threading
-from src.dashhome import create_schedule_view
-from src.database import users_db
-from src.login import create_login_view
-from src.register import create_register_view
-from src.alert import create_confirm_view
-from src.audio import start_listening
-from src.background import start_background_monitor
-from src.checkup import create_confirm_view
+from dashhome import create_schedule_view
+from database import users_db
+from login import create_login_view
+from register import create_register_view
+from alert import create_confirm_view
+from audio import start_listening
+from background import start_background_monitor
+from checkup import create_confirm_view
 
 
 def main(page: ft.Page):
