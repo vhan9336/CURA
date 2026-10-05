@@ -8,11 +8,15 @@ from src.register import create_register_view
 from src.alert import create_confirm_view
 from src.audio import start_listening
 from src.background import start_background_monitor
+from src.checkup import create_confirm_view
 
 
 def main(page: ft.Page):
   page.vertical_alignment = ft.MainAxisAlignment.CENTER
   page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+  page.theme_mode = ft.ThemeMode.DARK
+  page.window.width = 400
+  page.window.height = 800
 
   # Function to initialize and start the background check-up monitor for a user
   def initialize_user_session(username: str):
@@ -41,7 +45,7 @@ def main(page: ft.Page):
   def go_to_register(e=None):
     create_register_view(page, go_to_login)
 
-  # Function to navigate to the checkup alert view manually if needed
+  # Function to navigate to the checkup alert view manually iZf needed
   def go_to_confirm(username=""):
     create_confirm_view(page, username)
 
