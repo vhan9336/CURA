@@ -41,7 +41,7 @@ def create_confirm_view(page: ft.Page):
   )
 
   page.add(
-      ft.Text(f"Hi users_db[entered_user], this your routine checkup...", size=22, weight=ft.FontWeight.BOLD, color="blue"),
+      ft.Text(f"Hi Vihaan! this your routine checkup...", size=22, weight=ft.FontWeight.BOLD, color="blue"),
       ft.Container(height=10),
       ft.Text("How are you doing?", size=18),
       ft.Container(height=20),

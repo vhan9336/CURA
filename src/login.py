@@ -1,6 +1,6 @@
 # login.py
 import flet as ft
-from database import users_db
+from src.database import users_db
 
 
 def create_login_view(page: ft.Page, on_success_callback, on_switch_to_register):

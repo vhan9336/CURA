@@ -1,6 +1,6 @@
 # timeset.py
 import flet as ft
-from database import users_db
+from src.database import users_db
 
 
 def create_schedule_view(page: ft.Page, username: str = ""):

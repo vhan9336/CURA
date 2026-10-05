@@ -1,6 +1,6 @@
 # register_page.py
 import flet as ft
-from database import users_db
+from src.database import users_db
 
 
 def create_register_view(page: ft.Page, on_switch_to_login):
