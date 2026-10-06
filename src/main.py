@@ -13,8 +13,11 @@ def initialize_user_session(page: ft.Page, username: str):
             "bedtime": user_info.get("bedtime_time"),
         }
 
+    async def show_hourly_checkup():
+        create_confirm_view(page, username)
+
     def trigger_hourly_checkup():
-        page.run_task(lambda: create_confirm_view(page, username))
+        page.run_task(show_hourly_checkup)
 
     start_background_monitor(get_user_schedule, trigger_hourly_checkup)
 

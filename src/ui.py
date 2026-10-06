@@ -5,7 +5,6 @@ from dashhome import create_schedule_view
 from database import users_db
 from login import create_login_view
 from register import create_register_view
-from alert import create_confirm_view
 from audio import start_listening
 from background import start_background_monitor
 from checkup import create_confirm_view
@@ -15,8 +14,8 @@ def main(page: ft.Page):
   page.vertical_alignment = ft.MainAxisAlignment.CENTER
   page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
   page.theme_mode = ft.ThemeMode.DARK
-  page.window.width = 400
-  page.window.height = 800
+  page.window.width = 700
+  page.window.height = 1300
 
   # Function to initialize and start the background check-up monitor for a user
   def initialize_user_session(username: str):
@@ -27,9 +26,11 @@ def main(page: ft.Page):
           "bedtime": user_info.get("bedtime_time"),
       }
 
-    def trigger_hourly_checkup():
-      # Change from page.run_task to directly invoking or executing on the page view
+    async def show_hourly_checkup():
       create_confirm_view(page, username)
+
+    def trigger_hourly_checkup():
+      page.run_task(show_hourly_checkup)
 
     start_background_monitor(get_user_schedule, trigger_hourly_checkup)
 

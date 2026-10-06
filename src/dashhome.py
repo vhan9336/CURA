@@ -1,4 +1,5 @@
 # dashhome.py
+import asyncio
 import os
 import re
 from datetime import datetime
@@ -45,6 +46,7 @@ Strict Guidelines:
 
 # Chat history per user, kept here so it survives theme changes and tab switches.
 CHATS = {}
+CHECKUP_INTRO_STORAGE_KEY = "cura_checkup_intro_shown"
 
 
 def _user_dict(username: str) -> dict:
@@ -163,7 +165,73 @@ def create_schedule_view(page: ft.Page, username: str = ""):
 # ---------------------------------------------------------------------------
 # Main dashboard
 # ---------------------------------------------------------------------------
+def _show_checkup_intro(page: ft.Page, username: str, start_index: int):
+    page.clean()
+    page.overlay.clear()
+    apply_theme(page)
+    page.title = "Safety App - Routine Check-Ups"
+    page.vertical_alignment = ft.MainAxisAlignment.CENTER
+    page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+    page.add(
+        ft.SafeArea(
+            expand=True,
+            content=ft.Container(
+                alignment=ft.Alignment.CENTER,
+                padding=24,
+                content=ft.Column(
+                    [
+                        ft.Text(
+                            "Routine check-ups",
+                            size=28,
+                            weight=ft.FontWeight.W_700,
+                            color=C.INK,
+                            text_align=ft.TextAlign.CENTER,
+                        ),
+                        ft.Text(
+                            "Between your wake-up time and bedtime, the app will "
+                            "check in once each hour. When a check-up appears, "
+                            "let us know that you're okay or ask for help.",
+                            size=16,
+                            color=C.MUTED,
+                            text_align=ft.TextAlign.CENTER,
+                        ),
+                        ft.Text(
+                            "Taking you to your dashboard shortly...",
+                            size=13,
+                            color=C.MUTED,
+                            text_align=ft.TextAlign.CENTER,
+                        ),
+                    ],
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=16,
+                ),
+            ),
+        )
+    )
+    page.update()
+
+    async def continue_to_dashboard():
+        await asyncio.sleep(5)
+        _render_main_dashboard(page, username, start_index)
+
+    page.run_task(continue_to_dashboard)
+
+
 def open_main_dashboard(page: ft.Page, username: str = "", start_index: int = 0):
+    async def show_intro_or_dashboard():
+        intro_shown = await page.shared_preferences.get(CHECKUP_INTRO_STORAGE_KEY)
+        if intro_shown is not True:
+            saved = await page.shared_preferences.set(CHECKUP_INTRO_STORAGE_KEY, True)
+            if not saved:
+                raise RuntimeError("Could not save the check-up introduction status.")
+            _show_checkup_intro(page, username, start_index)
+            return
+        _render_main_dashboard(page, username, start_index)
+
+    page.run_task(show_intro_or_dashboard)
+
+
+def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int = 0):
     user_info = _user_dict(username)
     if "dark_mode" in user_info:
         set_dark(user_info["dark_mode"])
@@ -407,7 +475,7 @@ def open_main_dashboard(page: ft.Page, username: str = "", start_index: int = 0)
                     "https://www.cdc.gov/social-connectedness/data-research/promising-approaches/index.html",
                 ),
                 resource_card(
-                    "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=600&auto=format&fit=crop&q=60",
+                    "https://fastly.picsum.photos/id/13/2500/1667.jpg?hmac=SoX9UoHhN8HyklRA4A3vcCWJMVtiBXUg0W4ljWTor7s",
                     "Coping with loneliness",
                     "Practical ways to cope with loneliness and build connections.",
                     "https://www.mentalhealth.org.uk/explore-mental-health/a-z-topics/loneliness",

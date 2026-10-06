@@ -1,30 +1,32 @@
 # background.py
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 import time as t
 import threading
 
 
+def _is_within_waking_hours(current_time: time, wakeup_time: time, bedtime: time) -> bool:
+    if wakeup_time <= bedtime:
+        return wakeup_time <= current_time <= bedtime
+    return current_time >= wakeup_time or current_time <= bedtime
+
+
 def run_safety_scheduler(get_user_schedule_func, trigger_alert_func):
-    last_checked_hour = None
+    last_alert_at = None
     while True:
         now = datetime.now()
-        current_hour = now.hour
         current_time = now.time()
 
         schedule = get_user_schedule_func()
 
-        # Retrieve user schedule set via dashhome.py widget
         wakeup_time = schedule.get("wakeup")
         bedtime = schedule.get("bedtime")
 
-        # If the user hasn't configured a schedule yet, skip or use a safe default
         if wakeup_time is not None and bedtime is not None:
-            if wakeup_time <= current_time <= bedtime:
-                if last_checked_hour != current_hour:
-                    last_checked_hour = current_hour
+            if _is_within_waking_hours(current_time, wakeup_time, bedtime):
+                if last_alert_at is None or now - last_alert_at >= timedelta(hours=1):
+                    last_alert_at = now
                     trigger_alert_func()
 
-        print("Time logged")
         t.sleep(60)
 
 

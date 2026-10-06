@@ -5,6 +5,8 @@ from help import help
 from plyer import notification
 
 def trigger_desktop_alert():
+  if notification.notify is None:
+    raise RuntimeError("Desktop notifications are not available on this device.")
   notification.notify(
       title="Routine Check-Up",
       message="Please acknowledge immediately in the app",
@@ -14,12 +16,12 @@ def trigger_desktop_alert():
 
 
 
-def create_confirm_view(page: ft.Page):
+def create_confirm_view(page: ft.Page, username: str = ""):
   page.title = "Safety App - Routine Check"
   page.clean()
 
   def handle_ok(e):
-    open_main_dashboard(page)
+    open_main_dashboard(page, username)
 
   def handle_help(e):
     help()
@@ -50,3 +52,4 @@ def create_confirm_view(page: ft.Page):
       help_button,
   )
   page.update()
+  trigger_desktop_alert()
