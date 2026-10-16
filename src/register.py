@@ -1,15 +1,26 @@
 # register_page.py
 import flet as ft
 
-from database import users_db
-from theme import (
-    C,
-    apply_theme,
-    auth_banner,
-    card,
-    primary_button,
-    text_field,
-)
+if __package__:
+    from .database import hash_password, save_users_db, users_db
+    from .theme import (
+        C,
+        apply_theme,
+        auth_banner,
+        card,
+        primary_button,
+        text_field,
+    )
+else:
+    from database import hash_password, save_users_db, users_db
+    from theme import (
+        C,
+        apply_theme,
+        auth_banner,
+        card,
+        primary_button,
+        text_field,
+    )
 
 
 def create_register_view(page: ft.Page, on_switch_to_login):
@@ -59,12 +70,18 @@ def create_register_view(page: ft.Page, on_switch_to_login):
             show_error("Please enter a valid Emergency Contact 2 containing digits only!")
         else:
             users_db[entered_user] = {
-                "password": entered_pass,
+                "password": hash_password(entered_pass),
                 "email": entered_email,
                 "phone": entered_phone_number,
                 "e_contact1": entered_econtact1,
                 "e_contact2": entered_econtact2,
             }
+            try:
+                save_users_db(users_db)
+            except OSError:
+                users_db.pop(entered_user, None)
+                show_error("Could not save your account. Please try again.")
+                return
             status_text.value = "Registration successful! Redirecting..."
             status_text.color = C.OK
             page.update()

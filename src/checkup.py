@@ -1,13 +1,21 @@
 # checkup.py
 import flet as ft
-from dashhome import open_main_dashboard
-from help import help
 from plyer import notification
 
+if __package__:
+  from .dashhome import open_main_dashboard
+  from .help import help
+  from .theme import C, apply_theme, card, primary_button
+else:
+  from dashhome import open_main_dashboard
+  from help import help
+  from theme import C, apply_theme, card, primary_button
+
 def trigger_desktop_alert():
-  if notification.notify is None:
+  notify = notification.notify
+  if not callable(notify):
     raise RuntimeError("Desktop notifications are not available on this device.")
-  notification.notify(
+  notify(
       title="Routine Check-Up",
       message="Please acknowledge immediately in the app",
       app_name="Safety App",
@@ -19,37 +27,60 @@ def trigger_desktop_alert():
 def create_confirm_view(page: ft.Page, username: str = ""):
   page.title = "Safety App - Routine Check"
   page.clean()
+  page.overlay.clear()
+  page.navigation_bar = None
+  apply_theme(page)
+  status_text = ft.Text("", size=14, color=C.ERROR, text_align=ft.TextAlign.CENTER)
 
   def handle_ok(e):
     open_main_dashboard(page, username)
 
   def handle_help(e):
-    help()
-
-  ok_button = ft.ElevatedButton(
-      content="I'm doing well!",
-      color="white",
-      bgcolor="blue",
-      width=300,
-      on_click=handle_ok,
-  )
-
-  help_button = ft.ElevatedButton(
-      content="I need help",
-      color="white",
-      bgcolor="red",
-      width=300,
-      on_click=handle_help,
-  )
+    status_text.value = help()
+    page.update()
 
   page.add(
-      ft.Text(f"Hi Vihaan! this your routine checkup...", size=22, weight=ft.FontWeight.BOLD, color="blue"),
-      ft.Container(height=10),
-      ft.Text("How are you doing?", size=18),
-      ft.Container(height=20),
-      ok_button,
-      ft.Container(height=10),
-      help_button,
+      ft.SafeArea(
+          expand=True,
+          content=ft.Container(
+              alignment=ft.Alignment.CENTER,
+              padding=24,
+              content=card(
+                  ft.Column(
+                      [
+                          ft.Text(
+                              f"Hi {username or 'there'}, this is your routine check-up.",
+                              size=22,
+                              weight=ft.FontWeight.W_700,
+                              color=C.INK,
+                              text_align=ft.TextAlign.CENTER,
+                          ),
+                          ft.Text(
+                              "How are you doing?",
+                              size=18,
+                              color=C.MUTED,
+                              text_align=ft.TextAlign.CENTER,
+                          ),
+                          primary_button("I'm doing well", handle_ok, expand=True),
+                          ft.OutlinedButton(
+                              content="I need help",
+                              on_click=handle_help,
+                              style=ft.ButtonStyle(
+                                  color=C.ERROR,
+                                  shape=ft.RoundedRectangleBorder(radius=14),
+                              ),
+                              expand=True,
+                              height=52,
+                          ),
+                          status_text,
+                      ],
+                      horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                      spacing=16,
+                  ),
+                  padding=24,
+              ),
+          ),
+      )
   )
   page.update()
   trigger_desktop_alert()

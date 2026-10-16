@@ -7,28 +7,45 @@ from datetime import datetime
 import flet as ft
 from openai import OpenAI
 
-from database import users_db
-from theme import (
-    C,
-    apply_theme,
-    card,
-    fmt_time,
-    hero_gradient,
-    icon_badge,
-    is_dark,
-    page_header,
-    primary_button,
-    set_dark,
-)
+if __package__:
+    from .database import save_users_db, users_db
+    from .theme import (
+        C,
+        apply_theme,
+        card,
+        fmt_time,
+        hero_gradient,
+        icon_badge,
+        is_dark,
+        page_header,
+        primary_button,
+        set_dark,
+    )
+else:
+    from database import save_users_db, users_db
+    from theme import (
+        C,
+        apply_theme,
+        card,
+        fmt_time,
+        hero_gradient,
+        icon_badge,
+        is_dark,
+        page_header,
+        primary_button,
+        set_dark,
+    )
 
 # ---------------------------------------------------------------------------
 # AI client  (key comes from an environment variable, never from source)
 #   Windows:   setx GROQ_API_KEY "your-new-key"
 #   macOS/Lin: export GROQ_API_KEY="your-new-key"
 # ---------------------------------------------------------------------------
-client = OpenAI(
-    base_url="https://api.groq.com/openai/v1",
-    api_key=os.environ.get("GROQ_API_KEY", "[REDACTED_GROQ_CREDENTIAL]"),
+api_key = os.environ.get("GROQ_API_KEY")
+client = (
+    OpenAI(base_url="https://api.groq.com/openai/v1", api_key=api_key)
+    if api_key
+    else None
 )
 
 SYSTEM_PROMPT = """
@@ -126,14 +143,29 @@ def create_schedule_view(page: ft.Page, username: str = ""):
         try:
             wakeup_obj = datetime.strptime(state["wakeup"], "%I:%M %p").time()
             bedtime_obj = datetime.strptime(state["bedtime"], "%I:%M %p").time()
-            if not isinstance(users_db.get(username), dict):
-                users_db[username] = {}
-            users_db[username]["wakeup_time"] = wakeup_obj
-            users_db[username]["bedtime_time"] = bedtime_obj
-        except Exception as ex:
-            print(f"Error saving schedule times: {ex}")
+        except ValueError:
+            schedule_error.value = "Choose valid wake-up and bedtime values."
+            page.update()
+            return
+        if wakeup_obj == bedtime_obj:
+            schedule_error.value = "Wake-up time and bedtime must be different."
+            page.update()
+            return
+        if not isinstance(users_db.get(username), dict):
+            users_db[username] = {}
+        previous_info = dict(users_db[username])
+        users_db[username]["wakeup_time"] = wakeup_obj
+        users_db[username]["bedtime_time"] = bedtime_obj
+        try:
+            save_users_db(users_db)
+        except OSError:
+            users_db[username] = previous_info
+            schedule_error.value = "Could not save your schedule. Please try again."
+            page.update()
+            return
         open_main_dashboard(page, username)
 
+    schedule_error = ft.Text(size=13, color=C.ERROR)
     page.add(
         ft.SafeArea(
             expand=True,
@@ -152,6 +184,7 @@ def create_schedule_view(page: ft.Page, username: str = ""):
                         time_tile(ft.Icons.NIGHTLIGHT_OUTLINED, "Bedtime", bedtime_text, bedtime_picker),
                         ft.Container(height=8),
                         ft.Row([primary_button("Save schedule", save_schedule, expand=True)]),
+                        schedule_error,
                     ],
                     spacing=14,
                     scroll=ft.ScrollMode.AUTO,
@@ -233,8 +266,7 @@ def open_main_dashboard(page: ft.Page, username: str = "", start_index: int = 0)
 
 def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int = 0):
     user_info = _user_dict(username)
-    if "dark_mode" in user_info:
-        set_dark(user_info["dark_mode"])
+    set_dark(bool(user_info.get("dark_mode", False)))
 
     page.clean()
     page.overlay.clear()
@@ -317,12 +349,23 @@ def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int =
         page.update()
 
     # ----- Settings --------------------------------------------------------
+    settings_error = ft.Text(size=13, color=C.ERROR)
+
     def toggle_dark(e):
         value = bool(e.control.value)
         set_dark(value)
         if not isinstance(users_db.get(username), dict):
             users_db[username] = {}
         users_db[username]["dark_mode"] = value
+        try:
+            save_users_db(users_db)
+        except OSError:
+            users_db[username]["dark_mode"] = not value
+            set_dark(not value)
+            e.control.value = not value
+            settings_error.value = "Could not save this setting. Please try again."
+            page.update()
+            return
         open_main_dashboard(page, username, start_index=1)
 
     def load_settings_view():
@@ -425,6 +468,7 @@ def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int =
                     bgcolor=C.PRIMARY_SOFT,
                     padding=16,
                 ),
+                settings_error,
                 ft.Container(height=8),
             ],
             spacing=14,
@@ -557,6 +601,15 @@ def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int =
             add_message("You", prompt_text, True)
             api_history.append({"role": "user", "content": prompt_text})
 
+            if client is None:
+                api_history.pop()
+                add_message(
+                    "System",
+                    "The digital helper is unavailable until GROQ_API_KEY is configured.",
+                    False,
+                )
+                return
+
             chat_list.controls.append(typing_row)
             page.update()
 
@@ -574,14 +627,14 @@ def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int =
                 if typing_row in chat_list.controls:
                     chat_list.controls.remove(typing_row)
                 add_message("Digital Helper", ai_reply, False)
-            except Exception as ex:
+            except Exception:
                 if typing_row in chat_list.controls:
                     chat_list.controls.remove(typing_row)
                 if api_history and api_history[-1]["role"] == "user":
                     api_history.pop()
                 add_message(
                     "System",
-                    f"Couldn't reach the assistant. Check your connection and try again. ({ex})",
+                    "Couldn't reach the assistant. Check your connection and try again.",
                     False,
                 )
 

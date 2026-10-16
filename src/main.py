@@ -19,7 +19,9 @@ def initialize_user_session(page: ft.Page, username: str):
     def trigger_hourly_checkup():
         page.run_task(show_hourly_checkup)
 
-    start_background_monitor(get_user_schedule, trigger_hourly_checkup)
+    start_background_monitor(
+        get_user_schedule, trigger_hourly_checkup, monitor_key=username
+    )
 
 
 def open_main_dashboard(page: ft.Page, username: str = ""):

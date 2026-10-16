@@ -1,15 +1,26 @@
 # login.py
 import flet as ft
 
-from database import users_db
-from theme import (
-    C,
-    apply_theme,
-    auth_banner,
-    card,
-    primary_button,
-    text_field,
-)
+if __package__:
+    from .database import users_db, verify_password
+    from .theme import (
+        C,
+        apply_theme,
+        auth_banner,
+        card,
+        primary_button,
+        text_field,
+    )
+else:
+    from database import users_db, verify_password
+    from theme import (
+        C,
+        apply_theme,
+        auth_banner,
+        card,
+        primary_button,
+        text_field,
+    )
 
 
 def create_login_view(page: ft.Page, on_success_callback, on_switch_to_register):
@@ -32,7 +43,11 @@ def create_login_view(page: ft.Page, on_success_callback, on_switch_to_register)
         entered_pass = log_password.value
 
         user_data = users_db.get(entered_user)
-        if user_data and isinstance(user_data, dict) and user_data.get("password") == entered_pass:
+        if (
+            user_data
+            and isinstance(user_data, dict)
+            and verify_password(entered_pass or "", user_data.get("password"))
+        ):
             log_status.value = "Login successful! Loading dashboard..."
             log_status.color = C.OK
             page.update()
