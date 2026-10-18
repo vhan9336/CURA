@@ -78,9 +78,9 @@ def create_register_view(page: ft.Page, on_switch_to_login):
             }
             try:
                 save_users_db(users_db)
-            except OSError:
+            except OSError as error:
                 users_db.pop(entered_user, None)
-                show_error("Could not save your account. Please try again.")
+                show_error(f"Could not save account data: {error}")
                 return
             status_text.value = "Registration successful! Redirecting..."
             status_text.color = C.OK

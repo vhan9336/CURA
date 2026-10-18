@@ -10,6 +10,9 @@ from typing import Mapping
 
 
 def _default_data_path() -> Path:
+    if os.environ.get("ANDROID_DATA"):
+        return Path.cwd() / "CURA" / "users.json"
+
     local_app_data = os.environ.get("LOCALAPPDATA")
     root = Path(local_app_data) if local_app_data else Path.home() / ".local" / "share"
     return root / "CURA" / "users.json"

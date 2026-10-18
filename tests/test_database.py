@@ -2,11 +2,36 @@ import tempfile
 import unittest
 from datetime import time
 from pathlib import Path
+from unittest.mock import patch
 
+from src import database
 from src.database import hash_password, load_users_db, save_users_db, verify_password
 
 
 class UserStoreTests(unittest.TestCase):
+    def test_android_uses_writable_application_data_directory(self):
+        with patch.dict(
+            "os.environ",
+            {"ANDROID_DATA": "/data", "LOCALAPPDATA": ""},
+            clear=True,
+        ):
+            data_path = database._default_data_path()
+
+        self.assertEqual(data_path, Path.cwd() / "CURA" / "users.json")
+
+    def test_windows_uses_local_app_data_directory(self):
+        with patch.dict(
+            "os.environ",
+            {"LOCALAPPDATA": "C:/Users/Test/AppData/Local"},
+            clear=True,
+        ):
+            data_path = database._default_data_path()
+
+        self.assertEqual(
+            data_path,
+            Path("C:/Users/Test/AppData/Local") / "CURA" / "users.json",
+        )
+
     def test_accounts_and_times_survive_store_round_trip(self):
         users = {
             "Alex": {

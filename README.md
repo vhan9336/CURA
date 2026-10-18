@@ -26,6 +26,7 @@ input device while it is running.
 - Account details, schedule times, and preferences are stored locally in
   `%LOCALAPPDATA%\CURA\users.json` on Windows. On other systems, the default
   location is `~/.local/share/CURA/users.json`.
+- On Android, account data is stored under CURA's writable app data directory.
 - The digital helper calls CURA's shared Flask API. The Groq API key belongs
   only on the API server; desktop clients must not be given this secret.
 
