@@ -68,10 +68,3 @@ Run the regression tests from the repository root:
 ```powershell
 python -m unittest discover -s tests -v
 ```
-
-## Current limitations
-
-Sound detection is based on microphone signal levels and may need threshold
-tuning for the device and environment. It is not a validated emergency
-detection service. The “I need help” action currently displays guidance; it
-does not send a message to emergency contacts or contact emergency services.
