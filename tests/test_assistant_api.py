@@ -71,6 +71,11 @@ class AssistantApiTests(unittest.TestCase):
 
 
 class AssistantClientTests(unittest.TestCase):
+    def test_desktop_client_defaults_to_deployed_server(self):
+        self.assertEqual(
+            dashhome.ASSISTANT_API_URL, "https://cura-assistant-api.onrender.com"
+        )
+
     def test_desktop_client_posts_chat_to_configured_server(self):
         response = Mock()
         response.json.return_value = {"reply": "Hello there."}

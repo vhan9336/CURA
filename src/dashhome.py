@@ -37,7 +37,9 @@ else:
         set_dark,
     )
 
-ASSISTANT_API_URL = os.environ.get("CURA_API_URL", "").strip().rstrip("/")
+ASSISTANT_API_URL = os.environ.get(
+    "CURA_API_URL", "https://cura-assistant-api.onrender.com"
+).strip().rstrip("/")
 
 
 def _request_assistant_reply(messages: Sequence[dict[str, str]]) -> str:
