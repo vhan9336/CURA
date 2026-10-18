@@ -3,9 +3,10 @@ import asyncio
 import os
 import re
 from datetime import datetime
+from typing import Sequence
 
 import flet as ft
-from openai import OpenAI
+import requests
 
 if __package__:
     from .database import save_users_db, users_db
@@ -36,30 +37,24 @@ else:
         set_dark,
     )
 
-# ---------------------------------------------------------------------------
-# AI client  (key comes from an environment variable, never from source)
-#   Windows:   setx GROQ_API_KEY "your-new-key"
-#   macOS/Lin: export GROQ_API_KEY="your-new-key"
-# ---------------------------------------------------------------------------
-api_key = os.environ.get("GROQ_API_KEY")
-client = (
-    OpenAI(base_url="https://api.groq.com/openai/v1", api_key=api_key)
-    if api_key
-    else None
-)
+ASSISTANT_API_URL = os.environ.get("CURA_API_URL", "").strip().rstrip("/")
 
-SYSTEM_PROMPT = """
-You are an embedded digital health companion for this Safety and Check-Up Application.
-Your ONLY purpose is to help the user with tasks relevant to this app's purpose:
-1. Explaining how the app's features work (e.g., routine check-ups, background monitoring, schedule settings).
-2. Guiding them on how to update their wakeup/bedtime schedule or emergency contacts.
-3. Helping them locate nearby pharmacies or urgent care centers when requested.
-4. "Giving mental health tips when needed and acting as a therapeutic companion"
 
-Strict Guidelines:
-- If a user asks about unrelated topics (e.g., coding help, general trivia, history, recipes, or creative writing), politely decline and remind them that you are here to assist with their safety app usage and health resources.
-- Always maintain a supportive, clear, and concise tone.
-"""
+def _request_assistant_reply(messages: Sequence[dict[str, str]]) -> str:
+    if not ASSISTANT_API_URL:
+        raise RuntimeError("CURA_API_URL is not configured.")
+    response = requests.post(
+        f"{ASSISTANT_API_URL}/assistant/chat",
+        json={"messages": list(messages)},
+        timeout=35,
+    )
+    response.raise_for_status()
+    response_data = response.json()
+    reply = response_data.get("reply") if isinstance(response_data, dict) else None
+    if not isinstance(reply, str) or not reply.strip():
+        raise ValueError("Assistant server returned an invalid reply.")
+    return reply.strip()
+
 
 # Chat history per user, kept here so it survives theme changes and tab switches.
 CHATS = {}
@@ -601,11 +596,11 @@ def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int =
             add_message("You", prompt_text, True)
             api_history.append({"role": "user", "content": prompt_text})
 
-            if client is None:
+            if not ASSISTANT_API_URL:
                 api_history.pop()
                 add_message(
                     "System",
-                    "The digital helper is unavailable until GROQ_API_KEY is configured.",
+                    "The digital helper is not configured for this installation yet.",
                     False,
                 )
                 return
@@ -614,12 +609,7 @@ def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int =
             page.update()
 
             try:
-                response = client.chat.completions.create(
-                    model="openai/gpt-oss-20b",
-                    messages=[{"role": "system", "content": SYSTEM_PROMPT}] + api_history[-12:],
-                    temperature=0.3,
-                )
-                ai_reply = response.choices[0].message.content or ""
+                ai_reply = _request_assistant_reply(api_history[-12:])
                 ai_reply = re.sub(r"<think>.*?</think>", "", ai_reply, flags=re.DOTALL)
                 ai_reply = re.sub(r"<thinking>.*?</thinking>", "", ai_reply, flags=re.DOTALL).strip()
 
@@ -627,7 +617,7 @@ def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int =
                 if typing_row in chat_list.controls:
                     chat_list.controls.remove(typing_row)
                 add_message("Digital Helper", ai_reply, False)
-            except Exception:
+            except (requests.RequestException, ValueError):
                 if typing_row in chat_list.controls:
                     chat_list.controls.remove(typing_row)
                 if api_history and api_history[-1]["role"] == "user":

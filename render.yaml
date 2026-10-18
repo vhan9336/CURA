@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: cura-assistant-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-api.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 8 src.app:app
+    healthCheckPath: /health
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
