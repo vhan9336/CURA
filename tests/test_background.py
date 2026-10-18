@@ -1,9 +1,40 @@
 import unittest
 import asyncio
 from datetime import datetime, time
-from unittest.mock import patch
+from types import ModuleType, SimpleNamespace
+from typing import cast
+from unittest.mock import Mock, patch
 
-from src import audio, background
+import flet as ft
+
+from src import alert, audio, background, checkup
+
+
+class PlatformNotificationTests(unittest.TestCase):
+    def test_android_screens_do_not_require_plyer(self):
+        page = cast(
+            ft.Page,
+            SimpleNamespace(platform=SimpleNamespace(is_desktop=lambda: False)),
+        )
+
+        with patch.dict("sys.modules", {"plyer": None}):
+            checkup.trigger_desktop_alert(page)
+            alert.trigger_desktop_alert(page)
+
+    def test_desktop_screens_keep_plyer_notifications(self):
+        notify = Mock()
+        plyer = ModuleType("plyer")
+        setattr(plyer, "notification", SimpleNamespace(notify=notify))
+        page = cast(
+            ft.Page,
+            SimpleNamespace(platform=SimpleNamespace(is_desktop=lambda: True)),
+        )
+
+        with patch.dict("sys.modules", {"plyer": plyer}):
+            checkup.trigger_desktop_alert(page)
+            alert.trigger_desktop_alert(page)
+
+        self.assertEqual(notify.call_count, 2)
 
 
 class WakingHoursTests(unittest.TestCase):

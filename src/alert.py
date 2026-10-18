@@ -1,6 +1,5 @@
 # alert.py
 import flet as ft
-from plyer import notification
 
 if __package__:
   from .dashhome import open_main_dashboard
@@ -12,7 +11,12 @@ else:
   from theme import C, apply_theme, card, primary_button
 
 
-def trigger_desktop_alert():
+def trigger_desktop_alert(page: ft.Page):
+  if page.platform is None or not page.platform.is_desktop():
+    return
+
+  from plyer import notification
+
   notify = notification.notify
   if not callable(notify):
     raise RuntimeError("Desktop notifications are not available on this device.")
@@ -83,7 +87,7 @@ def create_audio_alert_view(page: ft.Page, username: str = ""):
       ),
   )
   page.update()
-  trigger_desktop_alert()
+  trigger_desktop_alert(page)
 
 
 create_confirm_view = create_audio_alert_view

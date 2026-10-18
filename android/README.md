@@ -1,6 +1,6 @@
 # CURA Android native bridge
 
-This local Flet extension targets Flet `0.86.4` and Android. It adds:
+This local Flet extension targets Flet `0.86.5` and Android. It adds:
 
 - A microphone `AudioRecord` foreground service with a persistent notification, a dBFS meter, and loud-sound alerts.
 - Hourly local check-in notifications restored after Android reboot, based on local wake/bed wall-clock times.
@@ -13,7 +13,13 @@ From the repository root, install the extension into the same Python environment
 python -m pip install -e .\android\flet_cura_android
 ```
 
-For reproducible `flet build android` builds, declare this local package as a project dependency in the Flet app's dependency manifest (for example, a local project dependency pointing at `android/flet_cura_android`). This repository currently has only `requirements.txt`; do not expect an editable install in a developer environment to be available in a separate clean build environment.
+The root `pyproject.toml` declares this local package as an Android build dependency and points Flet to its source under `android/flet_cura_android`. Build from the repository root so Flet can package the native extension:
+
+```powershell
+flet build apk --output dist --yes
+```
+
+An editable install is useful for local Python development, but does not by itself include the Flutter extension in a separate build environment.
 
 The extension's Flutter and Android files are packaged with the Python distribution and are discovered by Flet's extension build. The prebuilt Flet client used by plain `flet run` does not contain this extension; use `flet debug android` or `flet build android` with the extension installed/included.
 
