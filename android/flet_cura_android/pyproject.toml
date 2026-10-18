@@ -1,0 +1,16 @@
+[project]
+name = "flet-cura-android"
+version = "0.1.0"
+description = "Android-native services for CURA's Flet app."
+requires-python = ">=3.10"
+dependencies = ["flet>=0.86.4,<0.87"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"flutter.flet_cura_android" = ["pubspec.yaml", "lib/**", "android/**"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

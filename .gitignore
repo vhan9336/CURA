@@ -1,1 +1,6 @@
 .aider*
+/build/
+/dist/
+android/flet_cura_android/build/
+android/flet_cura_android/src/flet_cura_android.egg-info/
+android/flet_cura_android/src/flet_cura_android/__pycache__/

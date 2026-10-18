@@ -62,6 +62,28 @@ client IP per minute per server process. For a multi-worker or public
 deployment, also enable provider spending limits and a shared rate limiter at
 the hosting platform or gateway.
 
+## Android APK
+
+Build a sideloadable Android APK from the repository root with:
+
+```powershell
+flet build apk --output dist --yes
+```
+
+The first build installs the Flutter and Android build tools if they are
+missing. Flet reads Android-specific dependencies and app settings from
+`pyproject.toml`; the native microphone/notification bridge is in
+`android/flet_cura_android`.
+
+On first use, grant CURA microphone and notification permissions. While
+monitoring is enabled, Android shows an ongoing notification for microphone
+access. Loud sounds trigger a separate sound-alert notification/screen.
+Scheduled check-ins use Android local notifications and follow the configured
+wake/bed window, including overnight schedules. Android may defer these
+notifications while the device is in Doze mode; they are not guaranteed to
+arrive exactly on the hour. Reopen CURA after a device restart to resume
+microphone monitoring.
+
 ## Tests
 
 Run the regression tests from the repository root:

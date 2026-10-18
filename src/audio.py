@@ -1,6 +1,4 @@
 # audio.py
-import numpy as np
-import sounddevice as sd
 import flet as ft
 from datetime import datetime
 from collections.abc import Callable
@@ -14,6 +12,8 @@ SAMPLE_RATE = 44100
 
 
 def _audio_levels(indata) -> tuple[float, float]:
+    import numpy as np
+
     samples = np.asarray(indata, dtype=np.float32)
     if samples.size == 0:
         return 0.0, 0.0
@@ -40,6 +40,8 @@ def _dispatch_audio_alert(page: ft.Page, callback: Callable[[], None]) -> None:
 
 
 def start_listening(page: ft.Page, audio_alert_callback: Callable[[], None]):
+    import sounddevice as sd
+
     alert_active = False
 
     def audio_callback(indata, frames, time_info, status):

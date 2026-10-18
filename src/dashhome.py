@@ -2,8 +2,8 @@
 import asyncio
 import os
 import re
-from datetime import datetime
-from typing import Sequence
+from datetime import datetime, time
+from typing import Callable, Sequence
 
 import flet as ft
 import requests
@@ -71,7 +71,11 @@ def _user_dict(username: str) -> dict:
 # ---------------------------------------------------------------------------
 # Schedule screen
 # ---------------------------------------------------------------------------
-def create_schedule_view(page: ft.Page, username: str = ""):
+def create_schedule_view(
+    page: ft.Page,
+    username: str = "",
+    on_schedule_saved: Callable[[time, time], None] | None = None,
+):
     page.clean()
     page.overlay.clear()
     page.navigation_bar = None
@@ -160,6 +164,8 @@ def create_schedule_view(page: ft.Page, username: str = ""):
             schedule_error.value = "Could not save your schedule. Please try again."
             page.update()
             return
+        if on_schedule_saved is not None:
+            on_schedule_saved(wakeup_obj, bedtime_obj)
         open_main_dashboard(page, username)
 
     schedule_error = ft.Text(size=13, color=C.ERROR)

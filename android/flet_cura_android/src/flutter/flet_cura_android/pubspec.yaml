@@ -1,0 +1,21 @@
+name: flet_cura_android
+description: Android-native services for CURA's Flet app
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ">=3.2.3 <4.0.0"
+  flutter: ">=1.17.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flet:
+    path: ../../../../../../../packages/flet
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.cura.android
+        pluginClass: CuraAndroidPlugin
