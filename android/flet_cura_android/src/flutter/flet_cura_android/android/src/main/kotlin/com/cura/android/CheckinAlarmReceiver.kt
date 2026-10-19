@@ -99,13 +99,14 @@ internal object CheckinScheduling {
     private const val PREFS = CuraAndroidPlugin.PREFS
     private const val WAKE = "checkin_wake_minute"
     private const val BED = "checkin_bed_minute"
+    private const val FIRST_CHECKIN_DELAY_MILLIS = 60L * 60L * 1000L
 
     fun saveAndSchedule(context: Context, wake: Int, bed: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putInt(WAKE, wake)
             .putInt(BED, bed)
             .apply()
-        scheduleNext(context)
+        scheduleNext(context, FIRST_CHECKIN_DELAY_MILLIS)
     }
 
     fun cancel(context: Context) {
@@ -117,14 +118,14 @@ internal object CheckinScheduling {
         alarmManager.cancel(pendingIntent(context))
     }
 
-    fun scheduleNext(context: Context) {
+    fun scheduleNext(context: Context, minimumDelayMillis: Long = 0L) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val wake = prefs.getInt(WAKE, -1)
         val bed = prefs.getInt(BED, -1)
         if (wake !in 0..1439 || bed !in 0..1439 || wake == bed) return
 
         val now = Calendar.getInstance()
-        val next = findNext(wake, bed, now) ?: return
+        val next = findNext(wake, bed, now, minimumDelayMillis) ?: return
         val alarmManager = context.getSystemService(AlarmManager::class.java)
         if (Build.VERSION.SDK_INT >= 23) {
             alarmManager.setAndAllowWhileIdle(
@@ -147,7 +148,13 @@ internal object CheckinScheduling {
         else minute >= wake || minute <= bed
     }
 
-    private fun findNext(wake: Int, bed: Int, now: Calendar): Calendar? {
+    private fun findNext(
+        wake: Int,
+        bed: Int,
+        now: Calendar,
+        minimumDelayMillis: Long
+    ): Calendar? {
+        val earliestTimeMillis = now.timeInMillis + minimumDelayMillis
         val today = now.clone() as Calendar
         today.set(Calendar.HOUR_OF_DAY, 0)
         today.set(Calendar.MINUTE, 0)
@@ -164,7 +171,7 @@ internal object CheckinScheduling {
             end.set(Calendar.MINUTE, bed % 60)
             if (wake > bed) end.add(Calendar.DAY_OF_YEAR, 1)
             while (candidate.before(end) || candidate.timeInMillis == end.timeInMillis) {
-                if (candidate.after(now) || candidate.timeInMillis == now.timeInMillis) return candidate
+                if (candidate.timeInMillis >= earliestTimeMillis) return candidate
                 candidate.add(Calendar.HOUR_OF_DAY, 1)
             }
         }

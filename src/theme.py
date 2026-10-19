@@ -1,36 +1,38 @@
 # theme.py
 """Shared look & feel for every screen, with light and dark palettes."""
+from collections.abc import Callable
+
 import flet as ft
 
 LIGHT = dict(
-    BG="#F3F7F7",
+    BG="#F4F7F5",
     SURFACE="#FFFFFF",
-    INK=ft.Colors.BLUE_GREY_900,
-    MUTED=ft.Colors.BLUE_GREY_500,
-    PRIMARY=ft.Colors.TEAL_700,
-    PRIMARY_SOFT=ft.Colors.TEAL_50,
+    INK="#142B29",
+    MUTED="#637875",
+    PRIMARY="#14786C",
+    PRIMARY_SOFT="#E6F3EF",
     ON_PRIMARY=ft.Colors.WHITE,
-    BORDER=ft.Colors.BLUE_GREY_100,
-    HERO_A=ft.Colors.TEAL_600,
-    HERO_B=ft.Colors.TEAL_900,
-    HERO_TEXT=ft.Colors.TEAL_50,
+    BORDER="#E0E9E5",
+    HERO_A="#168777",
+    HERO_B="#07574F",
+    HERO_TEXT="#E4F6F1",
     ERROR=ft.Colors.RED_700,
     OK=ft.Colors.GREEN_700,
     SHADOW=0.07,
 )
 
 DARK = dict(
-    BG="#0E1414",
-    SURFACE="#172020",
-    INK="#E8F0F0",
-    MUTED="#93A8A8",
-    PRIMARY=ft.Colors.TEAL_300,
-    PRIMARY_SOFT="#14322F",
+    BG="#0B1514",
+    SURFACE="#14211F",
+    INK="#EAF3F0",
+    MUTED="#9BB0AA",
+    PRIMARY="#73D5C0",
+    PRIMARY_SOFT="#1B3A34",
     ON_PRIMARY="#04201E",
-    BORDER="#2B3A3A",
-    HERO_A=ft.Colors.TEAL_800,
-    HERO_B="#0B3B38",
-    HERO_TEXT=ft.Colors.TEAL_50,
+    BORDER="#283B37",
+    HERO_A="#146F62",
+    HERO_B="#0A463F",
+    HERO_TEXT="#E4F6F1",
     ERROR=ft.Colors.RED_300,
     OK=ft.Colors.GREEN_300,
     SHADOW=0.35,
@@ -42,6 +44,7 @@ class C:
 
 
 _state = {"dark": False}
+_theme_rebuilders: dict[int, Callable[[], None]] = {}
 
 
 def _load(palette: dict):
@@ -61,12 +64,51 @@ def is_dark() -> bool:
     return _state["dark"]
 
 
+def logo_asset() -> str:
+    return "logo-dark.png" if is_dark() else "logo-light.png"
+
+
+def set_theme_rebuilder(page: ft.Page, rebuild: Callable[[], None]) -> None:
+    _theme_rebuilders[id(page)] = rebuild
+
+
+def logo_badge(size: int, radius: int) -> ft.Container:
+    return ft.Container(
+        content=ft.Image(
+            src=logo_asset(),
+            width=80,
+            height=80,
+            fit=ft.BoxFit.CONTAIN,
+            border_radius=9,
+        ),
+        width=size,
+        height=size,
+        clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+        alignment=ft.Alignment.CENTER,
+    )
+
+
 def apply_theme(page: ft.Page):
     page.theme = ft.Theme(color_scheme_seed=ft.Colors.TEAL)
     page.dark_theme = ft.Theme(color_scheme_seed=ft.Colors.TEAL)
-    page.theme_mode = ft.ThemeMode.DARK if is_dark() else ft.ThemeMode.LIGHT
+    set_dark(page.platform_brightness == ft.Brightness.DARK)
+    page.theme_mode = ft.ThemeMode.SYSTEM
     page.bgcolor = C.BG
     page.padding = 0
+
+    def on_platform_brightness_change(_):
+        next_dark = page.platform_brightness == ft.Brightness.DARK
+        if next_dark == is_dark():
+            return
+        set_dark(next_dark)
+        rebuild = _theme_rebuilders.get(id(page))
+        if rebuild is not None:
+            rebuild()
+        else:
+            page.bgcolor = C.BG
+            page.update()
+
+    page.on_platform_brightness_change = on_platform_brightness_change
 
 
 # ---------------------------------------------------------------------------
@@ -78,7 +120,8 @@ def card(content, bgcolor=None, padding=18, on_click=None, gradient=None):
         bgcolor=None if gradient else (bgcolor or C.SURFACE),
         gradient=gradient,
         padding=padding,
-        border_radius=18,
+        border_radius=22,
+        animate=ft.Animation(240, ft.AnimationCurve.EASE_OUT),
         on_click=on_click,
         shadow=ft.BoxShadow(
             blur_radius=16,
@@ -97,7 +140,7 @@ def hero_gradient():
 
 
 def page_header(title: str, subtitle: str = ""):
-    controls = [ft.Text(title, size=26, weight=ft.FontWeight.W_700, color=C.INK)]
+    controls = [ft.Text(title, size=28, weight=ft.FontWeight.W_700, color=C.INK)]
     if subtitle:
         controls.append(ft.Text(subtitle, size=14, color=C.MUTED))
     return ft.Column(controls, spacing=4)
@@ -151,14 +194,7 @@ def text_field(label, icon=None, password=False, autofocus=False, keyboard_type=
 
 def auth_banner(title: str, subtitle: str):
     """Gradient header used at the top of the login and register screens."""
-    badge = ft.Container(
-        content=ft.Icon(ft.Icons.SHIELD_OUTLINED, color=ft.Colors.WHITE, size=34),
-        width=68,
-        height=68,
-        border_radius=22,
-        bgcolor=ft.Colors.with_opacity(0.18, ft.Colors.WHITE),
-        alignment=ft.Alignment(0, 0),
-    )
+    badge = logo_badge(84, 22)
     return ft.Container(
         gradient=hero_gradient(),
         border_radius=ft.BorderRadius(0, 0, 32, 32),

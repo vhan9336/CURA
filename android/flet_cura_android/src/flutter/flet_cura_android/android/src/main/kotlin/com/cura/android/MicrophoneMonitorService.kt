@@ -178,10 +178,10 @@ class MicrophoneMonitorService : Service() {
         private const val SAMPLE_RATE = 16000
         private const val SAMPLE_COUNT = 2048
         private const val NOTIFICATION_REFRESH_MS = 5000L
-        private const val RMS_THRESHOLD = 0.025
-        private const val PEAK_THRESHOLD = 0.45
-        private const val PEAK_MIN_RMS = 0.012
-        private const val RESET_THRESHOLD = 0.01
+        private const val RMS_THRESHOLD = 0.04
+        private const val PEAK_THRESHOLD = 0.65
+        private const val PEAK_MIN_RMS = 0.018
+        private const val RESET_THRESHOLD = 0.015
         private const val ALERT_ACTIVE = "microphone_alert_active"
     }
 }

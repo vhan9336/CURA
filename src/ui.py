@@ -10,31 +10,29 @@ if __package__:
   from .login import create_login_view
   from .register import create_register_view
   from .audio import start_listening
-  from .background import start_background_monitor
+  from .background import start_background_monitor, stop_background_monitor
   from .checkup import create_confirm_view
   from .alert import create_audio_alert_view
-  from .theme import set_dark
 else:
   from dashhome import create_schedule_view
   from database import users_db
   from login import create_login_view
   from register import create_register_view
   from audio import start_listening
-  from background import start_background_monitor
+  from background import start_background_monitor, stop_background_monitor
   from checkup import create_confirm_view
   from alert import create_audio_alert_view
-  from theme import set_dark
 
 
 def main(page: ft.Page):
   page.vertical_alignment = ft.MainAxisAlignment.CENTER
   page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
-  set_dark(False)
   if page.platform.is_desktop():
     page.window.width = 700
     page.window.height = 1300
 
   active_username: str | None = None
+  desktop_audio_stop_event: threading.Event | None = None
   mobile_monitor = None
   mobile_notifications_enabled = False
   mobile_watcher_started = False
@@ -45,17 +43,35 @@ def main(page: ft.Page):
     mobile_monitor = CuraAndroid()
     page.services.append(mobile_monitor)
 
+  def start_desktop_audio_monitor():
+    nonlocal desktop_audio_stop_event
+    if mobile_monitor is not None:
+      return
+    if desktop_audio_stop_event is not None and not desktop_audio_stop_event.is_set():
+      return
+    desktop_audio_stop_event = threading.Event()
+    audio_thread = threading.Thread(
+        target=start_listening,
+        args=(page, go_to_audio_alert, desktop_audio_stop_event),
+        daemon=True,
+    )
+    audio_thread.start()
+
   # Function to initialize and start the background check-up monitor for a user
   def initialize_user_session(username: str):
     def get_user_schedule():
       user_info = users_db.get(username, {})
+      if not isinstance(user_info, dict):
+        return {"wakeup": None, "bedtime": None}
+      wakeup = user_info.get("wakeup_time")
+      bedtime = user_info.get("bedtime_time")
       return {
-          "wakeup": user_info.get("wakeup_time"),
-          "bedtime": user_info.get("bedtime_time"),
+          "wakeup": wakeup if isinstance(wakeup, time) else None,
+          "bedtime": bedtime if isinstance(bedtime, time) else None,
       }
 
     async def show_hourly_checkup():
-      create_confirm_view(page, username)
+      create_confirm_view(page, username, on_logout=logout)
 
     def trigger_hourly_checkup():
       page.run_task(show_hourly_checkup)
@@ -64,6 +80,7 @@ def main(page: ft.Page):
       start_background_monitor(
           get_user_schedule, trigger_hourly_checkup, monitor_key=username
       )
+      start_desktop_audio_monitor()
 
   def show_mobile_notice(message: str):
     page.show_dialog(ft.SnackBar(content=ft.Text(message)))
@@ -85,13 +102,15 @@ def main(page: ft.Page):
       return
     if await mobile_monitor.consume_audio_alert():
       await mobile_monitor.consume_checkin()
-      create_audio_alert_view(page, username)
+      create_audio_alert_view(page, username, on_logout=logout)
     elif await mobile_monitor.consume_checkin():
-      create_confirm_view(page, username)
+      create_confirm_view(page, username, on_logout=logout)
 
-  async def watch_mobile_events(username: str):
-    while active_username == username:
-      await handle_pending_mobile_events(username)
+  async def watch_mobile_events():
+    while True:
+      username = active_username
+      if username is not None:
+        await handle_pending_mobile_events(username)
       await asyncio.sleep(1)
 
   async def initialize_mobile_session(username: str):
@@ -100,6 +119,8 @@ def main(page: ft.Page):
       return
 
     permissions = await mobile_monitor.request_permissions()
+    if active_username != username:
+      return
     mobile_notifications_enabled = permissions.notifications
     user_info = users_db.get(username, {})
     wakeup = user_info.get("wakeup_time") if isinstance(user_info, dict) else None
@@ -125,7 +146,29 @@ def main(page: ft.Page):
 
     if not mobile_watcher_started:
       mobile_watcher_started = True
-      page.run_task(watch_mobile_events, username)
+      page.run_task(watch_mobile_events)
+
+  def logout():
+    nonlocal active_username, desktop_audio_stop_event, mobile_notifications_enabled
+    username = active_username
+    if username is not None:
+      stop_background_monitor(username)
+    if desktop_audio_stop_event is not None:
+      desktop_audio_stop_event.set()
+      desktop_audio_stop_event = None
+    active_username = None
+    mobile_notifications_enabled = False
+
+    monitor = mobile_monitor
+    if monitor is not None:
+      async def stop_mobile_session():
+        await monitor.consume_audio_alert()
+        await monitor.consume_checkin()
+        await monitor.stop_monitoring()
+        await monitor.cancel_checkins()
+
+      page.run_task(stop_mobile_session)
+    go_to_login()
 
   # Called once a user successfully logs in -> Starts background monitor & goes to schedule setup
   def handle_successful_login(username):
@@ -134,12 +177,19 @@ def main(page: ft.Page):
     initialize_user_session(username)
     if mobile_monitor is not None:
       page.run_task(initialize_mobile_session, username)
+
+    def on_schedule_saved(wakeup: time, bedtime: time) -> None:
+      if mobile_monitor is None:
+        stop_background_monitor(username)
+        initialize_user_session(username)
+      else:
+        page.run_task(sync_mobile_schedule, wakeup, bedtime)
+
     create_schedule_view(
         page,
         username,
-        on_schedule_saved=lambda wakeup, bedtime: page.run_task(
-            sync_mobile_schedule, wakeup, bedtime
-        ),
+        on_schedule_saved=on_schedule_saved,
+        on_logout=logout,
     )
 
   # Define navigation switch functions
@@ -152,13 +202,7 @@ def main(page: ft.Page):
   def go_to_audio_alert(username: str | None = None):
     target_username = username or active_username
     if target_username is not None:
-      create_audio_alert_view(page, target_username)
-
-  if mobile_monitor is None:
-    audio_thread = threading.Thread(
-        target=start_listening, args=(page, go_to_audio_alert), daemon=True
-    )
-    audio_thread.start()
+      create_audio_alert_view(page, target_username, on_logout=logout)
 
   if mobile_monitor is not None and users_db:
     go_to_login()

@@ -1,15 +1,16 @@
 # dashhome.py
 import asyncio
+import calendar
 import os
 import re
-from datetime import datetime, time
+from datetime import date, datetime, time
 from typing import Callable, Sequence
 
 import flet as ft
 import requests
 
 if __package__:
-    from .database import save_users_db, users_db
+    from .database import get_checkin_history, save_users_db, users_db
     from .theme import (
         C,
         apply_theme,
@@ -17,13 +18,13 @@ if __package__:
         fmt_time,
         hero_gradient,
         icon_badge,
-        is_dark,
+        logo_badge,
         page_header,
         primary_button,
-        set_dark,
+        set_theme_rebuilder,
     )
 else:
-    from database import save_users_db, users_db
+    from database import get_checkin_history, save_users_db, users_db
     from theme import (
         C,
         apply_theme,
@@ -31,10 +32,10 @@ else:
         fmt_time,
         hero_gradient,
         icon_badge,
-        is_dark,
+        logo_badge,
         page_header,
         primary_button,
-        set_dark,
+        set_theme_rebuilder,
     )
 
 ASSISTANT_API_URL = os.environ.get(
@@ -118,12 +119,14 @@ def create_schedule_view(
     page: ft.Page,
     username: str = "",
     on_schedule_saved: Callable[[time, time], None] | None = None,
+    on_logout: Callable[[], None] | None = None,
+    initial_values: dict[str, str] | None = None,
 ):
     page.clean()
     page.overlay.clear()
     page.navigation_bar = None
     apply_theme(page)
-    page.title = "Safety App - Schedule"
+    page.title = "CURA - Daily schedule"
     page.vertical_alignment = ft.MainAxisAlignment.START
     page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
 
@@ -132,6 +135,18 @@ def create_schedule_view(
         "wakeup": fmt_time(saved.get("wakeup_time"), "07:00 AM"),
         "bedtime": fmt_time(saved.get("bedtime_time"), "10:00 PM"),
     }
+    if initial_values:
+        state.update(initial_values)
+    set_theme_rebuilder(
+        page,
+        lambda: create_schedule_view(
+            page,
+            username,
+            on_schedule_saved,
+            on_logout,
+            dict(state),
+        ),
+    )
 
     wakeup_text = ft.Text(state["wakeup"], size=30, weight=ft.FontWeight.W_700, color=C.INK)
     bedtime_text = ft.Text(state["bedtime"], size=30, weight=ft.FontWeight.W_700, color=C.INK)
@@ -209,7 +224,7 @@ def create_schedule_view(
             return
         if on_schedule_saved is not None:
             on_schedule_saved(wakeup_obj, bedtime_obj)
-        open_main_dashboard(page, username)
+        open_main_dashboard(page, username, on_logout=on_logout)
 
     schedule_error = ft.Text(size=13, color=C.ERROR)
     page.add(
@@ -244,11 +259,20 @@ def create_schedule_view(
 # ---------------------------------------------------------------------------
 # Main dashboard
 # ---------------------------------------------------------------------------
-def _show_checkup_intro(page: ft.Page, username: str, start_index: int):
+def _show_checkup_intro(
+    page: ft.Page,
+    username: str,
+    start_index: int,
+    on_logout: Callable[[], None] | None,
+):
     page.clean()
     page.overlay.clear()
     apply_theme(page)
-    page.title = "Safety App - Routine Check-Ups"
+    set_theme_rebuilder(
+        page,
+        lambda: _show_checkup_intro(page, username, start_index, on_logout),
+    )
+    page.title = "CURA - Check-ins"
     page.vertical_alignment = ft.MainAxisAlignment.CENTER
     page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
     page.add(
@@ -291,37 +315,53 @@ def _show_checkup_intro(page: ft.Page, username: str, start_index: int):
 
     async def continue_to_dashboard():
         await asyncio.sleep(5)
-        _render_main_dashboard(page, username, start_index)
+        _render_main_dashboard(page, username, start_index, on_logout)
 
     page.run_task(continue_to_dashboard)
 
 
-def open_main_dashboard(page: ft.Page, username: str = "", start_index: int = 0):
+def open_main_dashboard(
+    page: ft.Page,
+    username: str = "",
+    start_index: int = 0,
+    on_logout: Callable[[], None] | None = None,
+):
     async def show_intro_or_dashboard():
         intro_shown = await page.shared_preferences.get(CHECKUP_INTRO_STORAGE_KEY)
         if intro_shown is not True:
             saved = await page.shared_preferences.set(CHECKUP_INTRO_STORAGE_KEY, True)
             if not saved:
                 raise RuntimeError("Could not save the check-up introduction status.")
-            _show_checkup_intro(page, username, start_index)
+            _show_checkup_intro(page, username, start_index, on_logout)
             return
-        _render_main_dashboard(page, username, start_index)
+        _render_main_dashboard(page, username, start_index, on_logout)
 
     page.run_task(show_intro_or_dashboard)
 
 
-def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int = 0):
-    user_info = _user_dict(username)
-    set_dark(bool(user_info.get("dark_mode", False)))
-
+def _render_main_dashboard(
+    page: ft.Page,
+    username: str = "",
+    start_index: int = 0,
+    on_logout: Callable[[], None] | None = None,
+):
     page.clean()
     page.overlay.clear()
     apply_theme(page)
-    page.title = "Safety App - Dashboard"
+    page.title = "CURA"
     page.vertical_alignment = ft.MainAxisAlignment.START
     page.horizontal_alignment = ft.CrossAxisAlignment.START
 
     content_area = ft.Container(padding=ft.Padding(20, 20, 20, 0), expand=True)
+    view_switcher = ft.AnimatedSwitcher(
+        content=ft.Container(),
+        duration=260,
+        switch_in_curve=ft.AnimationCurve.EASE_OUT,
+        switch_out_curve=ft.AnimationCurve.EASE_IN,
+        transition=ft.AnimatedSwitcherTransition.FADE,
+        expand=True,
+    )
+    content_area.content = view_switcher
 
     chat_state = CHATS.setdefault(username, {"transcript": [], "api": []})
     transcript = chat_state["transcript"]  # (sender, text, is_user)
@@ -329,90 +369,405 @@ def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int =
 
     # ----- Home ------------------------------------------------------------
     def load_info_view():
-        def feature(icon, title, body):
-            return ft.Row(
-                [
-                    icon_badge(icon),
-                    ft.Column(
-                        [
-                            ft.Text(title, size=15, weight=ft.FontWeight.W_600, color=C.INK),
-                            ft.Text(body, size=13, color=C.MUTED),
-                        ],
-                        spacing=2,
-                        expand=True,
-                    ),
-                ],
-                spacing=14,
-                vertical_alignment=ft.CrossAxisAlignment.START,
+        info = _user_dict(username)
+        wake = fmt_time(info.get("wakeup_time"), "not set")
+        bedtime = fmt_time(info.get("bedtime_time"), "not set")
+
+        def feature(icon, title, body, accent=C.PRIMARY):
+            return card(
+                ft.Row(
+                    [
+                        icon_badge(icon, color=accent, bg=C.PRIMARY_SOFT),
+                        ft.Column(
+                            [
+                                ft.Text(
+                                    title,
+                                    size=16,
+                                    weight=ft.FontWeight.W_600,
+                                    color=C.INK,
+                                ),
+                                ft.Text(body, size=13, color=C.MUTED),
+                            ],
+                            spacing=4,
+                            expand=True,
+                        ),
+                    ],
+                    spacing=14,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                padding=16,
             )
 
-        content_area.content = ft.Column(
+        view_switcher.content = ft.Column(
             [
-                page_header("Welcome", "Your safety net when reaching help is hard."),
+                ft.Row(
+                    [
+                        logo_badge(60, 18),
+                        ft.Column(
+                            [
+                                ft.Text(
+                                    "CURA",
+                                    size=14,
+                                    weight=ft.FontWeight.W_700,
+                                    color=C.PRIMARY,
+                                ),
+                                ft.Text(
+                                    f"Welcome back, {username or 'there'}",
+                                    size=22,
+                                    weight=ft.FontWeight.W_700,
+                                    color=C.INK,
+                                ),
+                            ],
+                            spacing=2,
+                        ),
+                    ],
+                    spacing=14,
+                ),
                 card(
                     ft.Column(
                         [
-                            ft.Text("870,000", size=42, weight=ft.FontWeight.W_800, color=ft.Colors.WHITE),
                             ft.Text(
-                                "people pass away unnoticed each year because they couldn't "
-                                "reach help in time. This app is here to change that.",
+                                "A little more peace of mind.",
+                                size=24,
+                                weight=ft.FontWeight.W_700,
+                                color=ft.Colors.WHITE,
+                            ),
+                            ft.Text(
+                                "CURA checks in during your waking hours and can alert you "
+                                "after a loud sound. You stay in control, every step of the way.",
                                 size=14,
                                 color=C.HERO_TEXT,
                             ),
                         ],
-                        spacing=6,
+                        spacing=10,
                     ),
                     gradient=hero_gradient(),
-                    padding=24,
+                    padding=22,
                 ),
                 card(
                     ft.Column(
                         [
-                            feature(
-                                ft.Icons.EVENT_AVAILABLE_OUTLINED,
-                                "Routine check-ups",
-                                "Regular check-ins based on your wake-up and bedtime.",
+                            ft.Text(
+                                "Your daily check-in window",
+                                size=16,
+                                weight=ft.FontWeight.W_600,
+                                color=C.INK,
                             ),
-                            feature(
-                                ft.Icons.GRAPHIC_EQ,
-                                "Background monitoring",
-                                "Listens for sudden changes in volume to notice when something is wrong.",
+                            ft.Row(
+                                [
+                                    icon_badge(ft.Icons.WB_SUNNY_OUTLINED),
+                                    ft.Text(wake, size=15, color=C.INK, expand=True),
+                                    ft.Icon(
+                                        ft.Icons.ARROW_FORWARD,
+                                        size=16,
+                                        color=C.MUTED,
+                                    ),
+                                    ft.Text(bedtime, size=15, color=C.INK),
+                                ],
+                                spacing=10,
                             ),
-                            feature(
-                                ft.Icons.CONTACT_PHONE_OUTLINED,
-                                "Emergency contacts",
-                                "People we reach out to if you can't respond.",
+                            ft.Text(
+                                "Routine check-ins happen about once an hour in this window.",
+                                size=13,
+                                color=C.MUTED,
+                            ),
+                            ft.OutlinedButton(
+                                content="Review my schedule",
+                                icon=ft.Icons.EDIT_OUTLINED,
+                                on_click=lambda e: create_schedule_view(
+                                    page, username, on_logout=on_logout
+                                ),
                             ),
                         ],
-                        spacing=18,
+                        spacing=12,
                     )
+                ),
+                ft.Text(
+                    "HOW CURA SUPPORTS YOU",
+                    size=12,
+                    weight=ft.FontWeight.W_700,
+                    color=C.MUTED,
+                ),
+                feature(
+                    ft.Icons.EVENT_AVAILABLE_OUTLINED,
+                    "Hourly check-ins",
+                    "Choose your wake-up time and bedtime. Overnight schedules work too.",
+                ),
+                feature(
+                    ft.Icons.GRAPHIC_EQ,
+                    "Sound-level alerts",
+                    "CURA notices unusually loud sound and asks if you're okay; it does not "
+                    "record audio or recognize speech.",
+                    accent=C.ERROR,
+                ),
+                feature(
+                    ft.Icons.SHIELD_OUTLINED,
+                    "Your support details",
+                    "Emergency contact details stay on this device for reference. CURA "
+                    "doesn't automatically message or call anyone.",
+                ),
+                feature(
+                    ft.Icons.HISTORY_OUTLINED,
+                    "A private check-in history",
+                    "See the days you responded to routine and sound check-ins.",
+                ),
+                ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Icon(
+                                ft.Icons.LOCK_OUTLINE,
+                                color=C.PRIMARY,
+                                size=20,
+                            ),
+                            ft.Text(
+                                "Audio is analyzed on your device and is never saved.",
+                                size=13,
+                                color=C.INK,
+                                expand=True,
+                            ),
+                        ],
+                        spacing=12,
+                    ),
+                    bgcolor=C.PRIMARY_SOFT,
+                    padding=16,
+                    border_radius=18,
                 ),
                 ft.Container(height=8),
             ],
-            spacing=16,
+            spacing=12,
             scroll=ft.ScrollMode.AUTO,
+            expand=True,
         )
         page.update()
 
+    # ----- Check-in history -----------------------------------------------
+    def load_history_view():
+        history_error = ""
+        try:
+            entries = get_checkin_history(username)
+        except ValueError as error:
+            entries = []
+            history_error = f"Your saved history could not be read: {error}"
+
+        events_by_day: dict[date, list[dict[str, str]]] = {}
+        for entry in entries:
+            event_time = datetime.fromisoformat(entry["at"])
+            if event_time.tzinfo is not None:
+                event_time = event_time.astimezone()
+            events_by_day.setdefault(event_time.date(), []).append(entry)
+
+        for day_events in events_by_day.values():
+            day_events.sort(
+                key=lambda event: datetime.fromisoformat(event["at"]).timestamp()
+            )
+
+        state = {"month": date.today().replace(day=1), "selected": date.today()}
+        month_label = ft.Text(
+            size=17, weight=ft.FontWeight.W_600, color=C.INK
+        )
+        month_grid = ft.Column(spacing=4)
+        selected_events = ft.Column(spacing=10)
+        selected_title = ft.Text(
+            size=16, weight=ft.FontWeight.W_600, color=C.INK
+        )
+        count_text = ft.Text(size=14, color=C.MUTED)
+
+        def show_selected_day():
+            selected = state["selected"]
+            selected_title.value = f"{selected.strftime('%A, %B')} {selected.day}"
+            day_events = events_by_day.get(selected, [])
+            selected_events.controls = []
+            if not day_events:
+                selected_events.controls.append(
+                    ft.Text("No check-ins recorded for this day.", color=C.MUTED)
+                )
+            else:
+                for event in day_events:
+                    event_time = datetime.fromisoformat(event["at"])
+                    selected_events.controls.append(
+                        ft.Row(
+                            [
+                                icon_badge(
+                                    ft.Icons.EVENT_AVAILABLE_OUTLINED
+                                    if event["kind"] == "routine"
+                                    else ft.Icons.GRAPHIC_EQ,
+                                    color=C.PRIMARY,
+                                    bg=C.PRIMARY_SOFT,
+                                ),
+                                ft.Column(
+                                    [
+                                        ft.Text(
+                                            "Routine check-in"
+                                            if event["kind"] == "routine"
+                                            else "Sound check-in",
+                                            weight=ft.FontWeight.W_600,
+                                            color=C.INK,
+                                        ),
+                                        ft.Text(
+                                            event_time.astimezone().strftime(
+                                                "%I:%M %p"
+                                            ),
+                                            size=13,
+                                            color=C.MUTED,
+                                        ),
+                                    ],
+                                    spacing=2,
+                                ),
+                            ],
+                            spacing=12,
+                        )
+                    )
+            count_text.value = (
+                f"{len(entries)} check-in"
+                f"{'' if len(entries) == 1 else 's'} saved on this device"
+            )
+            page.update()
+
+        def build_calendar():
+            first_day = state["month"]
+            month_label.value = first_day.strftime("%B %Y")
+            month_grid.controls = [
+                ft.Row(
+                    [
+                        ft.Container(
+                            content=ft.Text(
+                                weekday,
+                                size=12,
+                                weight=ft.FontWeight.W_600,
+                                color=C.MUTED,
+                                text_align=ft.TextAlign.CENTER,
+                            ),
+                            width=38,
+                            alignment=ft.Alignment(0, 0),
+                        )
+                        for weekday in ("S", "M", "T", "W", "T", "F", "S")
+                    ],
+                    spacing=2,
+                )
+            ]
+            weeks = calendar.Calendar(firstweekday=6).monthdayscalendar(
+                first_day.year, first_day.month
+            )
+            for week in weeks:
+                day_controls = []
+                for day_number in week:
+                    if day_number == 0:
+                        day_controls.append(ft.Container(width=38, height=44))
+                        continue
+                    current_day = first_day.replace(day=day_number)
+                    has_events = current_day in events_by_day
+                    selected = current_day == state["selected"]
+
+                    def select_day(e, day=current_day):
+                        state["selected"] = day
+                        build_calendar()
+                        show_selected_day()
+
+                    day_controls.append(
+                        ft.Container(
+                            content=ft.Column(
+                                [
+                                    ft.Text(
+                                        str(day_number),
+                                        size=13,
+                                        color=C.PRIMARY if selected else C.INK,
+                                        weight=(
+                                            ft.FontWeight.W_700
+                                            if selected or has_events
+                                            else ft.FontWeight.W_400
+                                        ),
+                                    ),
+                                    ft.Container(
+                                        width=5,
+                                        height=5,
+                                        border_radius=3,
+                                        bgcolor=C.PRIMARY if has_events else None,
+                                    ),
+                                ],
+                                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                                alignment=ft.MainAxisAlignment.CENTER,
+                                spacing=1,
+                            ),
+                            width=38,
+                            height=44,
+                            border=ft.Border.all(
+                                1, C.PRIMARY if selected else C.BORDER
+                            ),
+                            border_radius=12,
+                            bgcolor=C.PRIMARY_SOFT if selected else C.SURFACE,
+                            on_click=select_day,
+                        )
+                    )
+                month_grid.controls.append(ft.Row(day_controls, spacing=2))
+
+        def change_month(offset: int):
+            current = state["month"]
+            month_index = current.month - 1 + offset
+            year = current.year + month_index // 12
+            month = month_index % 12 + 1
+            state["month"] = date(year, month, 1)
+            build_calendar()
+            page.update()
+
+        history_error_text = ft.Text(
+            history_error, size=13, color=C.ERROR
+        )
+        view_switcher.content = ft.Column(
+            [
+                page_header("Check-in history", "A private record saved on this device."),
+                card(
+                    ft.Column(
+                        [
+                            ft.Row(
+                                [
+                                    ft.IconButton(
+                                        icon=ft.Icons.CHEVRON_LEFT,
+                                        tooltip="Previous month",
+                                        on_click=lambda e: change_month(-1),
+                                    ),
+                                    month_label,
+                                    ft.IconButton(
+                                        icon=ft.Icons.CHEVRON_RIGHT,
+                                        tooltip="Next month",
+                                        on_click=lambda e: change_month(1),
+                                    ),
+                                ],
+                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            ),
+                            month_grid,
+                            ft.Text(
+                                "Filled days include a check-in you responded to.",
+                                size=12,
+                                color=C.MUTED,
+                            ),
+                        ],
+                        spacing=12,
+                    ),
+                    padding=16,
+                ),
+                card(
+                    ft.Column(
+                        [
+                            selected_title,
+                            selected_events,
+                            ft.Divider(color=C.BORDER),
+                            count_text,
+                        ],
+                        spacing=12,
+                    )
+                ),
+                history_error_text,
+                ft.Container(height=8),
+            ],
+            spacing=14,
+            scroll=ft.ScrollMode.AUTO,
+            expand=True,
+        )
+        build_calendar()
+        show_selected_day()
+
     # ----- Settings --------------------------------------------------------
     settings_error = ft.Text(size=13, color=C.ERROR)
-
-    def toggle_dark(e):
-        value = bool(e.control.value)
-        set_dark(value)
-        if not isinstance(users_db.get(username), dict):
-            users_db[username] = {}
-        users_db[username]["dark_mode"] = value
-        try:
-            save_users_db(users_db)
-        except OSError:
-            users_db[username]["dark_mode"] = not value
-            set_dark(not value)
-            e.control.value = not value
-            settings_error.value = "Could not save this setting. Please try again."
-            page.update()
-            return
-        open_main_dashboard(page, username, start_index=1)
 
     def load_settings_view():
         def info_row(icon, label, value):
@@ -438,22 +793,21 @@ def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int =
         wake = fmt_time(info.get("wakeup_time"), "Not set")
         bed = fmt_time(info.get("bedtime_time"), "Not set")
 
-        content_area.content = ft.Column(
+        view_switcher.content = ft.Column(
             [
                 page_header("Settings", "Your account and check-in details."),
                 card(
                     ft.Row(
                         [
-                            icon_badge(ft.Icons.DARK_MODE_OUTLINED),
+                            icon_badge(ft.Icons.BRIGHTNESS_6_OUTLINED),
                             ft.Column(
                                 [
-                                    ft.Text("Dark mode", size=15, weight=ft.FontWeight.W_600, color=C.INK),
-                                    ft.Text("Easier on the eyes at night", size=12, color=C.MUTED),
+                                    ft.Text("Appearance", size=15, weight=ft.FontWeight.W_600, color=C.INK),
+                                    ft.Text("Follows your device's light or dark theme", size=12, color=C.MUTED),
                                 ],
                                 spacing=2,
                                 expand=True,
                             ),
-                            ft.Switch(value=is_dark(), on_change=toggle_dark),
                         ],
                         spacing=14,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -489,7 +843,9 @@ def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int =
                             ft.OutlinedButton(
                                 content="Edit schedule",
                                 icon=ft.Icons.EDIT_OUTLINED,
-                                on_click=lambda e: create_schedule_view(page, username),
+                                on_click=lambda e: create_schedule_view(
+                                    page, username, on_logout=on_logout
+                                ),
                                 style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12)),
                             ),
                         ],
@@ -501,8 +857,8 @@ def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int =
                         [
                             ft.Icon(ft.Icons.LOCK_OUTLINE, color=C.PRIMARY, size=20),
                             ft.Text(
-                                "The app listens in the background only to detect abrupt changes "
-                                "in volume. Audio is never stored and conversations are never listened to.",
+                                "Sound levels are analyzed on this device only. Audio is never "
+                                "recorded or uploaded.",
                                 size=12,
                                 color=C.INK,
                                 expand=True,
@@ -513,6 +869,24 @@ def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int =
                     ),
                     bgcolor=C.PRIMARY_SOFT,
                     padding=16,
+                ),
+                ft.Container(
+                    content=ft.OutlinedButton(
+                        content="Log out",
+                        icon=ft.Icons.LOGOUT,
+                        on_click=(
+                            (lambda e: on_logout())
+                            if on_logout is not None
+                            else None
+                        ),
+                        disabled=on_logout is None,
+                        style=ft.ButtonStyle(
+                            color=C.ERROR,
+                            shape=ft.RoundedRectangleBorder(radius=14),
+                        ),
+                        expand=True,
+                    ),
+                    padding=ft.Padding(0, 8, 0, 8),
                 ),
                 settings_error,
                 ft.Container(height=8),
@@ -552,7 +926,7 @@ def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int =
                 padding=14,
             )
 
-        content_area.content = ft.Column(
+        view_switcher.content = ft.Column(
             [
                 page_header(
                     "Resources",
@@ -739,7 +1113,7 @@ def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int =
                 )
             )
 
-        content_area.content = ft.Column(
+        view_switcher.content = ft.Column(
             [
                 page_header("Digital helper"),
                 chat_list,
@@ -756,10 +1130,19 @@ def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int =
         page.update()
 
     # ----- Navigation ------------------------------------------------------
-    views = [load_info_view, load_settings_view, load_resource_view, load_chat_view]
+    views = [
+        load_info_view,
+        load_settings_view,
+        load_history_view,
+        load_resource_view,
+        load_chat_view,
+    ]
+
+    selected_tab = {"index": start_index}
 
     def on_nav_change(e):
-        views[e.control.selected_index]()
+        selected_tab["index"] = e.control.selected_index
+        views[selected_tab["index"]]()
 
     page.navigation_bar = ft.NavigationBar(
         selected_index=start_index,
@@ -774,7 +1157,14 @@ def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int =
                 icon=ft.Icons.SETTINGS_OUTLINED, selected_icon=ft.Icons.SETTINGS, label="Settings"
             ),
             ft.NavigationBarDestination(
-                icon=ft.Icons.EXPLORE_OUTLINED, selected_icon=ft.Icons.EXPLORE, label="Resources"
+                icon=ft.Icons.HISTORY_OUTLINED,
+                selected_icon=ft.Icons.HISTORY,
+                label="History",
+            ),
+            ft.NavigationBarDestination(
+                icon=ft.Icons.EXPLORE_OUTLINED,
+                selected_icon=ft.Icons.EXPLORE,
+                label="Resources",
             ),
             ft.NavigationBarDestination(
                 icon=ft.Icons.CHAT_BUBBLE_OUTLINE, selected_icon=ft.Icons.CHAT_BUBBLE, label="Helper"
@@ -785,3 +1175,9 @@ def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int =
     page.add(ft.SafeArea(expand=True, content=content_area))
     views[start_index]()
     page.update()
+    set_theme_rebuilder(
+        page,
+        lambda: _render_main_dashboard(
+            page, username, selected_tab["index"], on_logout
+        ),
+    )

@@ -34,7 +34,7 @@ def run_safety_scheduler(
     stop_event: threading.Event | None = None,
     poll_interval: float = 60,
 ) -> None:
-    last_alert_at = None
+    last_alert_at = datetime.now()
     if stop_event is None:
         stop_event = threading.Event()
 

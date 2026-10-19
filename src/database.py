@@ -4,9 +4,9 @@ import json
 import os
 import secrets
 import threading
-from datetime import time
+from datetime import datetime, time
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, cast
 
 
 def _default_data_path() -> Path:
@@ -104,6 +104,70 @@ def save_users_db(
             store_file.flush()
             os.fsync(store_file.fileno())
         temporary_path.replace(path)
+
+
+def get_checkin_history(username: str) -> list[dict[str, str]]:
+    user_info = users_db.get(username)
+    if not isinstance(user_info, dict):
+        raise ValueError("Cannot read check-in history for an unknown account.")
+    raw_history = user_info.get("checkin_history", "[]")
+    if not isinstance(raw_history, str):
+        raise ValueError("Saved check-in history has an invalid format.")
+    try:
+        decoded_history: object = json.loads(raw_history)
+    except json.JSONDecodeError as error:
+        raise ValueError("Saved check-in history contains invalid JSON.") from error
+    if not isinstance(decoded_history, list):
+        raise ValueError("Saved check-in history must contain a list of events.")
+
+    valid_history: list[dict[str, str]] = []
+    events = cast(list[object], decoded_history)
+    for raw_event in events:
+        if not isinstance(raw_event, dict):
+            raise ValueError("Saved check-in history contains an invalid event.")
+        event = cast(dict[str, object], raw_event)
+        event_at = event.get("at")
+        event_kind = event.get("kind")
+        if (
+            not isinstance(event_at, str)
+            or not isinstance(event_kind, str)
+            or event_kind not in {"routine", "sound"}
+        ):
+            raise ValueError("Saved check-in history contains an invalid event.")
+        try:
+            datetime.fromisoformat(event_at)
+        except ValueError as error:
+            raise ValueError("Saved check-in history contains an invalid date.") from error
+        valid_history.append({"at": event_at, "kind": event_kind})
+    return valid_history
+
+
+def record_checkin(username: str, kind: str) -> None:
+    if kind not in {"routine", "sound"}:
+        raise ValueError("Check-in kind must be 'routine' or 'sound'.")
+    with _store_lock:
+        user_info = users_db.get(username)
+        if not isinstance(user_info, dict):
+            raise ValueError("Cannot record a check-in for an unknown account.")
+
+        had_history = "checkin_history" in user_info
+        previous_history = user_info.get("checkin_history", "[]")
+        history = get_checkin_history(username)
+        history.append(
+            {
+                "at": datetime.now().astimezone().isoformat(timespec="seconds"),
+                "kind": kind,
+            }
+        )
+        user_info["checkin_history"] = json.dumps(history, separators=(",", ":"))
+        try:
+            save_users_db(users_db)
+        except OSError:
+            if not had_history:
+                user_info.pop("checkin_history", None)
+            else:
+                user_info["checkin_history"] = previous_history
+            raise
 
 
 users_db = load_users_db()

@@ -1,7 +1,8 @@
 # CURA
 
-CURA is a desktop safety companion with scheduled check-ins, loud-noise alerts,
-emergency contact details, and an optional digital helper.
+CURA is a personal safety companion with scheduled check-ins, on-device
+sound-level alerts, a private check-in calendar, emergency contact details,
+and an optional digital helper.
 
 ## Setup
 
@@ -13,20 +14,30 @@ python -m pip install -r requirements.txt
 python -m src.ui
 ```
 
-Allow microphone access when prompted. The app listens through the default
-input device while it is running.
+Allow microphone access when prompted. Microphone monitoring is active only
+while signed in; sign out to stop monitoring and scheduled check-ins.
 
 ## How it works
 
 - Create an account, sign in, and set wake-up and bedtime times.
 - Routine check-ins are prompted about once per hour during the configured
-  waking window. Overnight schedules are supported.
-- Loud sound detection opens a separate sound-alert screen; scheduled check-ins
-  use the routine check-up screen.
+  waking window, starting one hour after sign-in and schedule setup. Overnight
+  schedules are supported.
+- Loud sound detection opens a dedicated sound-alert screen; scheduled
+  check-ins use a separate routine check-up screen.
+- The Home tab explains what each feature does. The History tab shows a
+  calendar of check-ins you acknowledged, stored with your account on-device.
+- Audio is analyzed locally for sound levels only. CURA does not record audio,
+  recognize speech, or automatically call/message emergency contacts.
 - Account details, schedule times, and preferences are stored locally in
   `%LOCALAPPDATA%\CURA\users.json` on Windows. On other systems, the default
   location is `~/.local/share/CURA/users.json`.
 - On Android, account data is stored under CURA's writable app data directory.
+- Replace `src/assets/logo-light.png` and `src/assets/logo-dark.png` with your
+  light-background and dark-background logo images. The app uses the matching
+  image for in-app branding. `src/assets/icon_android.png` is the Android
+  launcher icon source; rebuild the APK after changing it.
+- CURA follows the device's system light/dark appearance.
 - The digital helper calls CURA's shared Flask API. The Groq API key belongs
   only on the API server; desktop clients must not be given this secret.
 
@@ -68,7 +79,7 @@ the hosting platform or gateway.
 Build a sideloadable Android APK from the repository root with:
 
 ```powershell
-flet build apk --output dist --yes
+flet build apk --output dist --yes --android-adaptive-icon-background "#0C5B52"
 ```
 
 The first build installs the Flutter and Android build tools if they are

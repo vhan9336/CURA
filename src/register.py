@@ -9,6 +9,7 @@ if __package__:
         auth_banner,
         card,
         primary_button,
+        set_theme_rebuilder,
         text_field,
     )
 else:
@@ -19,16 +20,21 @@ else:
         auth_banner,
         card,
         primary_button,
+        set_theme_rebuilder,
         text_field,
     )
 
 
-def create_register_view(page: ft.Page, on_switch_to_login):
+def create_register_view(
+    page: ft.Page,
+    on_switch_to_login,
+    initial_values: dict[str, str] | None = None,
+):
     page.clean()
     page.overlay.clear()
     page.navigation_bar = None
     apply_theme(page)
-    page.title = "Safety App - Register"
+    page.title = "CURA - Create account"
     page.vertical_alignment = ft.MainAxisAlignment.START
     page.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
 
@@ -88,6 +94,29 @@ def create_register_view(page: ft.Page, on_switch_to_login):
             on_switch_to_login()
 
     password_field.on_submit = handle_register
+    if initial_values:
+        username_field.value = initial_values.get("username", "")
+        email_field.value = initial_values.get("email", "")
+        number_field.value = initial_values.get("phone", "")
+        e_contact1.value = initial_values.get("contact1", "")
+        e_contact2.value = initial_values.get("contact2", "")
+        password_field.value = initial_values.get("password", "")
+
+    set_theme_rebuilder(
+        page,
+        lambda: create_register_view(
+            page,
+            on_switch_to_login,
+            {
+                "username": username_field.value or "",
+                "email": email_field.value or "",
+                "phone": number_field.value or "",
+                "contact1": e_contact1.value or "",
+                "contact2": e_contact2.value or "",
+                "password": password_field.value or "",
+            },
+        ),
+    )
 
     def section_label(text: str, hint: str = ""):
         controls = [ft.Text(text, size=15, weight=ft.FontWeight.W_600, color=C.INK)]
@@ -125,7 +154,10 @@ def create_register_view(page: ft.Page, on_switch_to_login):
     page.add(
         ft.Column(
             [
-                auth_banner("Create account", "Set up your safety net in a minute."),
+                auth_banner(
+                    "Create your CURA account",
+                    "A personal safety companion, set up your way.",
+                ),
                 ft.Container(height=20),
                 ft.Row(
                     [ft.Container(content=form, width=form_width)],

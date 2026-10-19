@@ -1,12 +1,13 @@
 # audio.py
-import flet as ft
-from datetime import datetime
 from collections.abc import Callable
+import threading
 
-RMS_THRESHOLD = 0.025
-PEAK_THRESHOLD = 0.45
-PEAK_MIN_RMS = 0.012
-RESET_THRESHOLD = 0.01
+import flet as ft
+
+RMS_THRESHOLD = 0.04
+PEAK_THRESHOLD = 0.65
+PEAK_MIN_RMS = 0.018
+RESET_THRESHOLD = 0.015
 DURATION = 0.1
 SAMPLE_RATE = 44100
 
@@ -39,13 +40,21 @@ def _dispatch_audio_alert(page: ft.Page, callback: Callable[[], None]) -> None:
     page.run_task(show_audio_alert)
 
 
-def start_listening(page: ft.Page, audio_alert_callback: Callable[[], None]):
+def start_listening(
+    page: ft.Page,
+    audio_alert_callback: Callable[[], None],
+    stop_event: threading.Event | None = None,
+):
     import sounddevice as sd
 
+    if stop_event is None:
+        stop_event = threading.Event()
     alert_active = False
 
     def audio_callback(indata, frames, time_info, status):
         nonlocal alert_active
+        if stop_event.is_set():
+            return
         if status:
             print(status)
 
@@ -61,10 +70,8 @@ def start_listening(page: ft.Page, audio_alert_callback: Callable[[], None]):
             alert_active = False
 
     with sd.InputStream(
-            callback=audio_callback, channels=1, samplerate=SAMPLE_RATE
+        callback=audio_callback, channels=1, samplerate=SAMPLE_RATE
     ):
         print("Listening for loud noises...")
-        while True:
-            now = datetime.now()
+        while not stop_event.is_set():
             sd.sleep(int(DURATION * 1000))
-            print(f"Audio frame logged; {now}")

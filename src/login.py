@@ -9,6 +9,7 @@ if __package__:
         auth_banner,
         card,
         primary_button,
+        set_theme_rebuilder,
         text_field,
     )
 else:
@@ -19,16 +20,22 @@ else:
         auth_banner,
         card,
         primary_button,
+        set_theme_rebuilder,
         text_field,
     )
 
 
-def create_login_view(page: ft.Page, on_success_callback, on_switch_to_register):
+def create_login_view(
+    page: ft.Page,
+    on_success_callback,
+    on_switch_to_register,
+    initial_values: dict[str, str] | None = None,
+):
     page.clean()
     page.overlay.clear()
     page.navigation_bar = None
     apply_theme(page)
-    page.title = "Safety App - Login"
+    page.title = "CURA - Log in"
     page.vertical_alignment = ft.MainAxisAlignment.START
     page.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
 
@@ -58,6 +65,22 @@ def create_login_view(page: ft.Page, on_success_callback, on_switch_to_register)
             page.update()
 
     log_password.on_submit = handle_login
+    if initial_values:
+        log_username.value = initial_values.get("username", "")
+        log_password.value = initial_values.get("password", "")
+
+    set_theme_rebuilder(
+        page,
+        lambda: create_login_view(
+            page,
+            on_success_callback,
+            on_switch_to_register,
+            {
+                "username": log_username.value or "",
+                "password": log_password.value or "",
+            },
+        ),
+    )
 
     form = card(
         ft.Column(
@@ -78,7 +101,10 @@ def create_login_view(page: ft.Page, on_success_callback, on_switch_to_register)
     page.add(
         ft.Column(
             [
-                auth_banner("Safety App", "Your safety net, always one tap away."),
+                auth_banner(
+                    "Welcome back",
+                    "A little more peace of mind, one check-in at a time.",
+                ),
                 ft.Container(height=20),
                 ft.Row(
                     [ft.Container(content=form, width=form_width)],
