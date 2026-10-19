@@ -100,6 +100,34 @@ class AssistantClientTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 dashhome._request_assistant_reply([])
 
+    def test_client_reports_rate_limit_errors_clearly(self):
+        error = dashhome.requests.HTTPError(
+            response=SimpleNamespace(status_code=429)
+        )
+
+        self.assertIn("busy", dashhome._assistant_failure_message(error))
+        self.assertIn("try again", dashhome._assistant_failure_message(error))
+
+    def test_client_reports_unavailable_service_errors_clearly(self):
+        error = dashhome.requests.HTTPError(
+            response=SimpleNamespace(status_code=503)
+        )
+
+        self.assertIn(
+            "temporarily unavailable", dashhome._assistant_failure_message(error)
+        )
+
+    def test_client_distinguishes_connection_and_timeout_errors(self):
+        connection_message = dashhome._assistant_failure_message(
+            dashhome.requests.ConnectionError()
+        )
+        timeout_message = dashhome._assistant_failure_message(
+            dashhome.requests.Timeout()
+        )
+
+        self.assertIn("internet connection", connection_message)
+        self.assertIn("too long to respond", timeout_message)
+
 
 if __name__ == "__main__":
     unittest.main()

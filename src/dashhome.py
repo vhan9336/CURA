@@ -58,6 +58,49 @@ def _request_assistant_reply(messages: Sequence[dict[str, str]]) -> str:
     return reply.strip()
 
 
+def _assistant_failure_message(
+    error: requests.RequestException | ValueError,
+) -> str:
+    if isinstance(error, ValueError):
+        return "The digital helper returned an invalid response. Please try again."
+
+    if isinstance(error, requests.HTTPError):
+        status_code = (
+            error.response.status_code if error.response is not None else None
+        )
+        if status_code == 429:
+            return "The digital helper is busy. Please wait a moment and try again."
+        if status_code == 502:
+            return (
+                "The digital helper's AI provider couldn't complete the request. "
+                "Please try again shortly."
+            )
+        if status_code == 503:
+            return (
+                "The digital helper service is temporarily unavailable. "
+                "Please try again later."
+            )
+        if status_code is not None and status_code >= 500:
+            return (
+                f"The digital helper server returned an error (HTTP {status_code}). "
+                "Please try again later."
+            )
+        if status_code is not None:
+            return (
+                f"The digital helper couldn't process the request (HTTP {status_code}). "
+                "Please check your message and try again."
+            )
+
+    if isinstance(error, requests.Timeout):
+        return "The digital helper took too long to respond. Please try again."
+    if isinstance(error, requests.ConnectionError):
+        return (
+            "Couldn't connect to the digital helper. Check your internet connection "
+            "and try again."
+        )
+    return "The digital helper request failed. Please try again."
+
+
 # Chat history per user, kept here so it survives theme changes and tab switches.
 CHATS = {}
 CHECKUP_INTRO_STORAGE_KEY = "cura_checkup_intro_shown"
@@ -625,16 +668,12 @@ def _render_main_dashboard(page: ft.Page, username: str = "", start_index: int =
                 if typing_row in chat_list.controls:
                     chat_list.controls.remove(typing_row)
                 add_message("Digital Helper", ai_reply, False)
-            except (requests.RequestException, ValueError):
+            except (requests.RequestException, ValueError) as error:
                 if typing_row in chat_list.controls:
                     chat_list.controls.remove(typing_row)
                 if api_history and api_history[-1]["role"] == "user":
                     api_history.pop()
-                add_message(
-                    "System",
-                    "Couldn't reach the assistant. Check your connection and try again.",
-                    False,
-                )
+                add_message("System", _assistant_failure_message(error), False)
 
         def send_message(e):
             prompt_text = user_input.value.strip()
