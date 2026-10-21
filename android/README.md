@@ -4,6 +4,7 @@ This local Flet extension targets Flet `0.86.5` and Android. It adds:
 
 - A microphone `AudioRecord` foreground service with a persistent notification, a dBFS meter, and loud-sound alerts.
 - Hourly local check-in notifications restored after Android reboot, based on local wake/bed wall-clock times.
+- A permission-gated SMS sender for user-triggered help alerts to the saved emergency contacts.
 
 ## Install and include
 
@@ -44,11 +45,28 @@ await native.stop_monitoring()
 Call `schedule_checkins(wake, bed)` again whenever the user's schedule changes. Equal wake and bed values disable the schedule. Overnight schedules (for example 22:00–07:00) are supported. Check-in alarms are inexact by design: the extension does not request special exact-alarm access and reports that Android may delay delivery. Notifications require the user to grant notification permission on Android 13+; microphone monitoring requires runtime microphone permission. The microphone service starts only while CURA's activity is visible.
 
 Audio remains on-device; no samples are stored or transmitted. The foreground
-notification refreshes with the current RMS level. Loud-sound detection uses
-the same RMS/peak thresholds as the desktop detector. While CURA is open, a
-detected sound routes to its dedicated sound-alert screen; if CURA is
-backgrounded, Android posts a separate alert notification and the app routes
-to the alert screen after it is reopened and the user signs in.
+notification refreshes with the current dBFS level. Android uses the bundled
+TensorFlow Lite YAMNet model (AudioSet labels) to classify overlapping 0.975 s
+audio windows, combined with a rolling noise-floor estimate and short 10 ms
+impact checks. Bang/crash labels are gated by transient evidence (with a
+strong-classification fallback); scream/shout/yell labels use temporal
+smoothing plus an energy gate. Capture requests the unprocessed source when the
+device advertises it, otherwise voice recognition, and attempts to disable
+session AGC/noise suppression. Android may ignore these requests or apply
+different microphone processing, so this reduces common sources of variation
+but cannot make sensitivity identical across devices.
+
+This is a starting detector, not a guarantee of recognizing every emergency.
+The thresholds and model need evaluation with representative room recordings
+on each target phone; measure recall per event type, false alerts per device
+hour, and detection delay before relying on it. YAMNet was trained on general
+AudioSet audio and is not a dedicated emergency detector. Model source and
+class labels: [TensorFlow YAMNet](https://github.com/tensorflow/models/tree/master/research/audioset/yamnet)
+and [YAMNet class map](https://github.com/tensorflow/models/blob/master/research/audioset/yamnet/yamnet_class_map.csv).
+While CURA is open, a detected sound routes to its dedicated sound-alert
+screen; if CURA is backgrounded, Android posts a separate alert notification
+and the app routes to the alert screen after it is reopened and the user signs
+in.
 
 Open CURA after a device restart to resume microphone monitoring. Android
 doesn't permit the app to start a microphone foreground service from the

@@ -74,6 +74,14 @@ class CuraAndroid(ft.Service):
     async def cancel_checkins(self) -> None:
         await self._invoke_method("cancelCheckins")
 
+    async def send_emergency_sms(
+        self, recipients: list[str], body: str
+    ) -> int:
+        """Send the user-requested alert by SMS after Android grants permission."""
+        return int(await self._invoke_method(
+            "sendEmergencySms", {"recipients": recipients, "body": body}
+        ))
+
 
 def _format_time(value: time) -> str:
     if value.tzinfo is not None:

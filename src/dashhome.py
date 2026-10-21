@@ -1,5 +1,4 @@
 # dashhome.py
-import asyncio
 import calendar
 import os
 import re
@@ -104,7 +103,6 @@ def _assistant_failure_message(
 
 # Chat history per user, kept here so it survives theme changes and tab switches.
 CHATS = {}
-CHECKUP_INTRO_STORAGE_KEY = "cura_checkup_intro_shown"
 
 
 def _user_dict(username: str) -> dict:
@@ -259,84 +257,13 @@ def create_schedule_view(
 # ---------------------------------------------------------------------------
 # Main dashboard
 # ---------------------------------------------------------------------------
-def _show_checkup_intro(
-    page: ft.Page,
-    username: str,
-    start_index: int,
-    on_logout: Callable[[], None] | None,
-):
-    page.clean()
-    page.overlay.clear()
-    apply_theme(page)
-    set_theme_rebuilder(
-        page,
-        lambda: _show_checkup_intro(page, username, start_index, on_logout),
-    )
-    page.title = "CURA - Check-ins"
-    page.vertical_alignment = ft.MainAxisAlignment.CENTER
-    page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
-    page.add(
-        ft.SafeArea(
-            expand=True,
-            content=ft.Container(
-                alignment=ft.Alignment.CENTER,
-                padding=24,
-                content=ft.Column(
-                    [
-                        ft.Text(
-                            "Routine check-ups",
-                            size=28,
-                            weight=ft.FontWeight.W_700,
-                            color=C.INK,
-                            text_align=ft.TextAlign.CENTER,
-                        ),
-                        ft.Text(
-                            "Between your wake-up time and bedtime, the app will "
-                            "check in once each hour. When a check-up appears, "
-                            "let us know that you're okay or ask for help.",
-                            size=16,
-                            color=C.MUTED,
-                            text_align=ft.TextAlign.CENTER,
-                        ),
-                        ft.Text(
-                            "Taking you to your dashboard shortly...",
-                            size=13,
-                            color=C.MUTED,
-                            text_align=ft.TextAlign.CENTER,
-                        ),
-                    ],
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    spacing=16,
-                ),
-            ),
-        )
-    )
-    page.update()
-
-    async def continue_to_dashboard():
-        await asyncio.sleep(5)
-        _render_main_dashboard(page, username, start_index, on_logout)
-
-    page.run_task(continue_to_dashboard)
-
-
 def open_main_dashboard(
     page: ft.Page,
     username: str = "",
     start_index: int = 0,
     on_logout: Callable[[], None] | None = None,
 ):
-    async def show_intro_or_dashboard():
-        intro_shown = await page.shared_preferences.get(CHECKUP_INTRO_STORAGE_KEY)
-        if intro_shown is not True:
-            saved = await page.shared_preferences.set(CHECKUP_INTRO_STORAGE_KEY, True)
-            if not saved:
-                raise RuntimeError("Could not save the check-up introduction status.")
-            _show_checkup_intro(page, username, start_index, on_logout)
-            return
-        _render_main_dashboard(page, username, start_index, on_logout)
-
-    page.run_task(show_intro_or_dashboard)
+    _render_main_dashboard(page, username, start_index, on_logout)
 
 
 def _render_main_dashboard(
@@ -792,6 +719,49 @@ def _render_main_dashboard(
         info = _user_dict(username)
         wake = fmt_time(info.get("wakeup_time"), "Not set")
         bed = fmt_time(info.get("bedtime_time"), "Not set")
+        contact1_field = ft.TextField(
+            label="Emergency contact 1 (+country code)",
+            value=str(info.get("e_contact1", "")),
+            keyboard_type=ft.KeyboardType.PHONE,
+            prefix_icon=ft.Icons.SHIELD_OUTLINED,
+        )
+        contact2_field = ft.TextField(
+            label="Emergency contact 2 (+country code)",
+            value=str(info.get("e_contact2", "")),
+            keyboard_type=ft.KeyboardType.PHONE,
+            prefix_icon=ft.Icons.SHIELD_OUTLINED,
+        )
+
+        def save_emergency_contacts(e):
+            contact1 = (contact1_field.value or "").strip()
+            contact2 = (contact2_field.value or "").strip()
+            for contact in (contact1, contact2):
+                if contact and not re.fullmatch(r"\+[1-9]\d{7,14}", contact):
+                    settings_error.value = "Use international phone format, e.g. +14155550123."
+                    page.update()
+                    return
+            previous = dict(info)
+            info["e_contact1"] = contact1
+            info["e_contact2"] = contact2
+            if not isinstance(users_db.get(username), dict):
+                users_db[username] = {}
+            users_db[username].update(
+                {"e_contact1": contact1, "e_contact2": contact2}
+            )
+            try:
+                save_users_db(users_db)
+            except OSError:
+                for key in ("e_contact1", "e_contact2"):
+                    if key in previous:
+                        info[key] = previous[key]
+                    else:
+                        info.pop(key, None)
+                settings_error.value = "Could not save emergency contacts. Please try again."
+                page.update()
+                return
+            settings_error.value = "Emergency contacts saved."
+            settings_error.color = C.OK
+            load_settings_view()
 
         view_switcher.content = ft.Column(
             [
@@ -828,8 +798,19 @@ def _render_main_dashboard(
                     ft.Column(
                         [
                             section_title("Emergency contacts"),
-                            info_row(ft.Icons.SHIELD_OUTLINED, "Contact 1", info.get("e_contact1", "N/A")),
-                            info_row(ft.Icons.SHIELD_OUTLINED, "Contact 2", info.get("e_contact2", "N/A")),
+                            ft.Text(
+                                "CURA sends an SMS to these contacts only when you tap ‘I need help’. Include + and your country code.",
+                                size=12,
+                                color=C.MUTED,
+                            ),
+                            contact1_field,
+                            contact2_field,
+                            ft.OutlinedButton(
+                                content="Save emergency contacts",
+                                icon=ft.Icons.SAVE_OUTLINED,
+                                on_click=save_emergency_contacts,
+                                style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12)),
+                            ),
                         ],
                         spacing=16,
                     )

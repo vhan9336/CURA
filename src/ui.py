@@ -5,23 +5,29 @@ import threading
 from datetime import time
 
 if __package__:
-  from .dashhome import create_schedule_view
+  from .dashhome import open_main_dashboard
   from .database import users_db
   from .login import create_login_view
+  from .onboarding import create_app_intro
   from .register import create_register_view
   from .audio import start_listening
   from .background import start_background_monitor, stop_background_monitor
   from .checkup import create_confirm_view
   from .alert import create_audio_alert_view
 else:
-  from dashhome import create_schedule_view
+  from dashhome import open_main_dashboard
   from database import users_db
   from login import create_login_view
+  from onboarding import create_app_intro
   from register import create_register_view
   from audio import start_listening
   from background import start_background_monitor, stop_background_monitor
   from checkup import create_confirm_view
   from alert import create_audio_alert_view
+
+
+SIGNED_IN_USER_KEY = "cura_signed_in_username"
+APP_INTRO_SHOWN_KEY = "cura_app_intro_shown"
 
 
 def main(page: ft.Page):
@@ -42,6 +48,7 @@ def main(page: ft.Page):
 
     mobile_monitor = CuraAndroid()
     page.services.append(mobile_monitor)
+    page._cura_send_emergency_sms = mobile_monitor.send_emergency_sms
 
   def start_desktop_audio_monitor():
     nonlocal desktop_audio_stop_event
@@ -159,6 +166,15 @@ def main(page: ft.Page):
     active_username = None
     mobile_notifications_enabled = False
 
+    async def clear_saved_session():
+      try:
+        await page.shared_preferences.remove(SIGNED_IN_USER_KEY)
+      except Exception:
+        pass
+      go_to_login()
+
+    page.run_task(clear_saved_session)
+
     monitor = mobile_monitor
     if monitor is not None:
       async def stop_mobile_session():
@@ -168,46 +184,77 @@ def main(page: ft.Page):
         await monitor.cancel_checkins()
 
       page.run_task(stop_mobile_session)
-    go_to_login()
 
-  # Called once a user successfully logs in -> Starts background monitor & goes to schedule setup
+  async def route_to_app(username: str):
+    if active_username != username:
+      return
+    preferences = page.shared_preferences
+    try:
+      await preferences.set(SIGNED_IN_USER_KEY, username)
+      intro_shown = await preferences.get(APP_INTRO_SHOWN_KEY)
+    except Exception:
+      intro_shown = False
+
+    if active_username != username:
+      return
+    if intro_shown is True:
+      open_main_dashboard(page, username, on_logout=logout)
+      return
+
+    def finish_intro():
+      async def save_intro_and_continue():
+        try:
+          await preferences.set(APP_INTRO_SHOWN_KEY, True)
+        except Exception:
+          pass
+        if active_username == username:
+          open_main_dashboard(page, username, on_logout=logout)
+
+      page.run_task(save_intro_and_continue)
+
+    create_app_intro(page, finish_intro)
+
+  # Registration and login both start a session immediately. The schedule is
+  # optional and can be configured later from the dashboard.
   def handle_successful_login(username):
     nonlocal active_username
     active_username = username
     initialize_user_session(username)
     if mobile_monitor is not None:
       page.run_task(initialize_mobile_session, username)
-
-    def on_schedule_saved(wakeup: time, bedtime: time) -> None:
-      if mobile_monitor is None:
-        stop_background_monitor(username)
-        initialize_user_session(username)
-      else:
-        page.run_task(sync_mobile_schedule, wakeup, bedtime)
-
-    create_schedule_view(
-        page,
-        username,
-        on_schedule_saved=on_schedule_saved,
-        on_logout=logout,
-    )
+    page.run_task(route_to_app, username)
 
   # Define navigation switch functions
   def go_to_login(e=None):
     create_login_view(page, handle_successful_login, go_to_register)
 
   def go_to_register(e=None):
-    create_register_view(page, go_to_login)
+    create_register_view(page, handle_successful_login, go_to_login)
 
   def go_to_audio_alert(username: str | None = None):
     target_username = username or active_username
     if target_username is not None:
       create_audio_alert_view(page, target_username, on_logout=logout)
 
-  if mobile_monitor is not None and users_db:
-    go_to_login()
-  else:
-    go_to_register()
+  async def restore_signed_in_user():
+    try:
+      username = await page.shared_preferences.get(SIGNED_IN_USER_KEY)
+    except Exception:
+      username = None
+    if isinstance(username, str) and username in users_db:
+      handle_successful_login(username)
+      return
+    if username is not None:
+      try:
+        await page.shared_preferences.remove(SIGNED_IN_USER_KEY)
+      except Exception:
+        pass
+    if users_db:
+      go_to_login()
+    else:
+      go_to_register()
+
+  page.run_task(restore_signed_in_user)
 
 
 if __name__ == "__main__":

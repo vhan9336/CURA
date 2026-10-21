@@ -1,11 +1,10 @@
-import asyncio
 import flet as ft
 from collections.abc import Callable
 
 if __package__:
     from .database import record_checkin, users_db
     from .dashhome import open_main_dashboard
-    from .help import help
+    from .help import help_message
     from .theme import (
         C,
         apply_theme,
@@ -17,7 +16,7 @@ if __package__:
 else:
     from database import record_checkin, users_db
     from dashhome import open_main_dashboard
-    from help import help
+    from help import help_message
     from theme import (
         C,
         apply_theme,
@@ -99,17 +98,35 @@ def create_confirm_view(
                 for key in ("e_contact1", "e_contact2")
                 if isinstance(info, dict) and info.get(key)
             ]
-            status_text.value = "Sending an SMS alert to your emergency contacts…"
+            if not contacts:
+                status_text.value = "Add an emergency contact in Settings before requesting SMS help."
+                status_text.color = C.ERROR
+                page.update()
+                return
+            status_text.value = "Sending your help alert by SMS…"
             status_text.color = C.MUTED
             help_button.disabled = True
             page.update()
-            page.run_task(send_help_alert, username, contacts)
+            page.run_task(open_help_sms, username, contacts)
 
-    async def send_help_alert(alert_username: str, contacts: list[str]):
-        status_text.value = await asyncio.to_thread(
-            help, alert_username, "routine", contacts
-        )
-        status_text.color = C.ERROR
+    async def open_help_sms(alert_username: str, contacts: list[str]):
+        nonlocal help_requested
+        try:
+            sender = getattr(page, "_cura_send_emergency_sms", None)
+            if sender is None:
+                raise RuntimeError("Automatic SMS is available in CURA for Android only.")
+            sent_to = await sender(contacts, help_message(alert_username, "routine"))
+            status_text.value = (
+                f"Help alert submitted by SMS to {sent_to} contact"
+                f"{'s' if sent_to != 1 else ''}. Carrier charges may apply. "
+                "Contact emergency services if you are in immediate danger."
+            )
+            status_text.color = C.MUTED
+        except Exception as error:
+            help_requested = False
+            help_button.disabled = False
+            status_text.value = f"Couldn't send the SMS alert: {error}. Contact emergency services if you need immediate help."
+            status_text.color = C.ERROR
         page.update()
 
     page.add(

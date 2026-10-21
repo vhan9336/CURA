@@ -1,59 +1,22 @@
 import os
-import sys
 import unittest
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from src import app as assistant_app
 from src import dashhome
-from src import help as help_client
+from src.help import help_message
 
 
 class AssistantApiTests(unittest.TestCase):
     def setUp(self):
         self.client = assistant_app.app.test_client()
         assistant_app._assistant_request_times.clear()
-        assistant_app._help_request_times.clear()
-        assistant_app._help_recipient_times.clear()
-
-    def test_help_notification_sends_sms_to_both_contacts(self):
-        twilio_module = ModuleType("twilio")
-        rest_module = ModuleType("twilio.rest")
-        client = Mock()
-        rest_module.Client = Mock(return_value=client)
-        twilio_module.rest = rest_module
-        payload = {
-            "username": "Alex",
-            "event": "sound",
-            "contacts": ["+14155550123", "+442071838750"],
-        }
-
-        with (
-            patch.dict(
-                os.environ,
-                {
-                    "TWILIO_ACCOUNT_SID": "ACtest",
-                    "TWILIO_AUTH_TOKEN": "token",
-                    "TWILIO_FROM_NUMBER": "+15005550006",
-                },
-            ),
-            patch.dict(sys.modules, {"twilio": twilio_module, "twilio.rest": rest_module}),
-        ):
-            response = self.client.post("/notifications/help", json=payload)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json(), {"sent": 2, "total": 2})
-        self.assertEqual(client.messages.create.call_count, 2)
-        self.assertIn("sound alert", client.messages.create.call_args.kwargs["body"])
-        rest_module.Client.assert_called_once_with("ACtest", "token")
-
-    def test_help_notification_rejects_non_e164_contacts(self):
-        response = self.client.post(
-            "/notifications/help",
-            json={"username": "Alex", "event": "routine", "contacts": ["4155550123"]},
-        )
-
-        self.assertEqual(response.status_code, 400)
+    def test_help_notifications_no_longer_use_server_endpoint(self):
+        self.assertEqual(self.client.post("/notifications/help", json={}).status_code, 404)
+        self.assertIn("Alex", help_message("Alex", "sound"))
+        self.assertIn("sound alert", help_message("Alex", "sound"))
+        self.assertIn("routine check-in", help_message("Alex", "routine"))
 
     def test_chat_endpoint_uses_server_key_and_returns_reply(self):
         completion = SimpleNamespace(
@@ -142,16 +105,6 @@ class AssistantClientTests(unittest.TestCase):
         with patch.object(dashhome, "ASSISTANT_API_URL", ""):
             with self.assertRaises(RuntimeError):
                 dashhome._request_assistant_reply([])
-
-    def test_help_client_explains_when_endpoint_is_not_deployed(self):
-        response = SimpleNamespace(status_code=404)
-        with (
-            patch.dict(os.environ, {"CURA_API_URL": "https://cura.example"}),
-            patch.object(help_client.requests, "post", return_value=response),
-        ):
-            message = help_client.help("Alex", "sound", ["+14155550123"])
-
-        self.assertIn("endpoint isn't deployed", message)
 
     def test_client_reports_rate_limit_errors_clearly(self):
         error = dashhome.requests.HTTPError(
