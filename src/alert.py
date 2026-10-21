@@ -1,8 +1,9 @@
+import asyncio
 import flet as ft
 from collections.abc import Callable
 
 if __package__:
-    from .database import record_checkin
+    from .database import record_checkin, users_db
     from .dashhome import open_main_dashboard
     from .help import help
     from .theme import (
@@ -14,7 +15,7 @@ if __package__:
         set_theme_rebuilder,
     )
 else:
-    from database import record_checkin
+    from database import record_checkin, users_db
     from dashhome import open_main_dashboard
     from help import help
     from theme import (
@@ -60,6 +61,7 @@ def create_audio_alert_view(
         initial_status, size=14, color=C.ERROR, text_align=ft.TextAlign.CENTER
     )
     responded = initial_responded
+    help_requested = False
 
     set_theme_rebuilder(
         page,
@@ -86,10 +88,29 @@ def create_audio_alert_view(
             open_main_dashboard(page, username, on_logout=on_logout)
 
     def handle_help(e):
+        nonlocal help_requested
+        if help_requested:
+            return
         if record_response():
-            status_text.value = help()
-            status_text.color = C.ERROR
+            help_requested = True
+            info = users_db.get(username, {})
+            contacts = [
+                str(info.get(key, ""))
+                for key in ("e_contact1", "e_contact2")
+                if isinstance(info, dict) and info.get(key)
+            ]
+            status_text.value = "Sending an SMS alert to your emergency contacts…"
+            status_text.color = C.MUTED
+            help_button.disabled = True
             page.update()
+            page.run_task(send_help_alert, username, contacts)
+
+    async def send_help_alert(alert_username: str, contacts: list[str]):
+        status_text.value = await asyncio.to_thread(
+            help, alert_username, "sound", contacts
+        )
+        status_text.color = C.ERROR
+        page.update()
 
     page.add(
         ft.SafeArea(
@@ -148,7 +169,7 @@ def create_audio_alert_view(
                                 icon=ft.Icons.CHECK_CIRCLE_OUTLINE,
                                 expand=True,
                             ),
-                            ft.OutlinedButton(
+                            (help_button := ft.OutlinedButton(
                                 content="I need help",
                                 icon=ft.Icons.SUPPORT_AGENT,
                                 on_click=handle_help,
@@ -158,7 +179,7 @@ def create_audio_alert_view(
                                 ),
                                 expand=True,
                                 height=54,
-                            ),
+                            )),
                             status_text,
                         ],
                         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
