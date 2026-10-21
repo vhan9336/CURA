@@ -1,5 +1,6 @@
 # register_page.py
 import flet as ft
+import re
 
 if __package__:
     from .database import hash_password, save_users_db, users_db
@@ -27,6 +28,7 @@ else:
 
 def create_register_view(
     page: ft.Page,
+    on_success_callback,
     on_switch_to_login,
     initial_values: dict[str, str] | None = None,
 ):
@@ -45,8 +47,8 @@ def create_register_view(
     username_field = text_field("Username", ft.Icons.PERSON_OUTLINE, autofocus=True)
     email_field = text_field("Email", ft.Icons.MAIL_OUTLINE, keyboard_type=ft.KeyboardType.EMAIL)
     number_field = text_field("Phone number", ft.Icons.PHONE_OUTLINED, keyboard_type=ft.KeyboardType.PHONE)
-    e_contact1 = text_field("Emergency contact #1", ft.Icons.SHIELD_OUTLINED, keyboard_type=ft.KeyboardType.PHONE)
-    e_contact2 = text_field("Emergency contact #2", ft.Icons.SHIELD_OUTLINED, keyboard_type=ft.KeyboardType.PHONE)
+    e_contact1 = text_field("Emergency contact #1 (+country code)", ft.Icons.SHIELD_OUTLINED, keyboard_type=ft.KeyboardType.PHONE)
+    e_contact2 = text_field("Emergency contact #2 (+country code)", ft.Icons.SHIELD_OUTLINED, keyboard_type=ft.KeyboardType.PHONE)
     password_field = text_field("Password", ft.Icons.LOCK_OUTLINE, password=True)
 
     def show_error(message: str):
@@ -70,17 +72,17 @@ def create_register_view(
             show_error("Username already exists!")
         elif entered_phone_number and not entered_phone_number.isdigit():
             show_error("Please enter a valid phone number containing digits only!")
-        elif entered_econtact1 and not entered_econtact1.isdigit():
-            show_error("Please enter a valid Emergency Contact 1 containing digits only!")
-        elif entered_econtact2 and not entered_econtact2.isdigit():
-            show_error("Please enter a valid Emergency Contact 2 containing digits only!")
+        elif entered_econtact1 and not re.fullmatch(r"\+[1-9]\d{7,14}", entered_econtact1.strip()):
+            show_error("Emergency Contact 1 must include its country code, e.g. +14155550123.")
+        elif entered_econtact2 and not re.fullmatch(r"\+[1-9]\d{7,14}", entered_econtact2.strip()):
+            show_error("Emergency Contact 2 must include its country code, e.g. +14155550123.")
         else:
             users_db[entered_user] = {
                 "password": hash_password(entered_pass),
                 "email": entered_email,
                 "phone": entered_phone_number,
-                "e_contact1": entered_econtact1,
-                "e_contact2": entered_econtact2,
+                "e_contact1": entered_econtact1.strip() if entered_econtact1 else "",
+                "e_contact2": entered_econtact2.strip() if entered_econtact2 else "",
             }
             try:
                 save_users_db(users_db)
@@ -88,10 +90,10 @@ def create_register_view(
                 users_db.pop(entered_user, None)
                 show_error(f"Could not save account data: {error}")
                 return
-            status_text.value = "Registration successful! Redirecting..."
+            status_text.value = "Account created. Welcome to CURA!"
             status_text.color = C.OK
             page.update()
-            on_switch_to_login()
+            on_success_callback(entered_user)
 
     password_field.on_submit = handle_register
     if initial_values:
@@ -106,6 +108,7 @@ def create_register_view(
         page,
         lambda: create_register_view(
             page,
+            on_success_callback,
             on_switch_to_login,
             {
                 "username": username_field.value or "",
@@ -156,7 +159,7 @@ def create_register_view(
             [
                 auth_banner(
                     "Create your CURA account",
-                    "A personal safety companion, set up your way.",
+                    "Create your account and start using CURA right away.",
                 ),
                 ft.Container(height=20),
                 ft.Row(

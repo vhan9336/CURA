@@ -1,7 +1,7 @@
 # CURA
 
 CURA is a personal safety companion with scheduled check-ins, on-device
-sound-level alerts, a private check-in calendar, emergency contact details,
+sound alerts for impacts and scream-like sounds, a private check-in calendar, emergency contact details,
 and an optional digital helper.
 
 ## Setup
@@ -14,12 +14,16 @@ python -m pip install -r requirements.txt
 python -m src.ui
 ```
 
-Allow microphone access when prompted. Microphone monitoring is active only
-while signed in; sign out to stop monitoring and scheduled check-ins.
+Allow microphone access when prompted. New accounts open directly into CURA
+after a short feature walkthrough; setting a daily schedule is optional and can
+be done later. CURA keeps you signed in on this device until you choose Log
+out. Logging out stops monitoring and scheduled check-ins.
 
 ## How it works
 
-- Create an account, sign in, and set wake-up and bedtime times.
+- Create an account and start using CURA immediately, or sign in to an existing
+  account. The first session includes a skippable feature walkthrough.
+- Set wake-up and bedtime times from the dashboard whenever you're ready.
 - Routine check-ins are prompted about once per hour during the configured
   waking window, starting one hour after sign-in and schedule setup. Overnight
   schedules are supported.
@@ -27,8 +31,14 @@ while signed in; sign out to stop monitoring and scheduled check-ins.
   check-ins use a separate routine check-up screen.
 - The Home tab explains what each feature does. The History tab shows a
   calendar of check-ins you acknowledged, stored with your account on-device.
-- Audio is analyzed locally for sound levels only. CURA does not record audio,
-  recognize speech, or automatically call/message emergency contacts.
+- Audio is analyzed locally with Google's YAMNet audio event model and short
+  term level checks. CURA does not record audio or transcribe speech. The model
+  can miss events or misclassify sounds, and phone microphones vary; validate
+  alert behavior on the devices where CURA will be used. When a user taps “I need help” on a routine or sound
+  alert, CURA requests Android SMS permission if needed, then sends the prepared
+  message to the saved emergency contacts after the user taps the help button.
+  The mobile carrier may charge for SMS. Automatic SMS requires the Android
+  build; desktop builds cannot send SMS.
 - Account details, schedule times, and preferences are stored locally in
   `%LOCALAPPDATA%\CURA\users.json` on Windows. On other systems, the default
   location is `~/.local/share/CURA/users.json`.
@@ -45,12 +55,17 @@ while signed in; sign out to stop monitoring and scheduled check-ins.
 
 The `render.yaml` Blueprint config deploys `src/app.py` as a Flask WSGI service
 over HTTPS at `https://cura-assistant-api.onrender.com`. In the Render
-dashboard, enter `GROQ_API_KEY` as a secret for the `cura-assistant-api`
-service; do not commit or distribute it. The desktop app defaults to this
+dashboard, enter `GROQ_API_KEY` as a secret/environment value for the
+`cura-assistant-api` service; never commit or distribute credentials. The desktop app defaults to this
 shared endpoint, so distributed builds do not need a separate `CURA_API_URL`
 setting. Set `CURA_API_URL` only to override the endpoint, such as when testing
 against a local API. Users then share the endpoint and do not need a Groq key
-of their own. The app sends chat requests to `/assistant/chat`.
+of their own. The app sends chat requests to `/assistant/chat`. Help messages
+use Android's SMS app and do not use the shared API.
+
+Emergency contact numbers must use international E.164 format, including the
+leading `+` and country code (for example, `+14155550123`). Users can edit both
+numbers under Settings.
 
 For local development, install API dependencies with
 `python -m pip install -r requirements-api.txt`. Run the API and desktop app in

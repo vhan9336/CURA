@@ -86,6 +86,11 @@ def create_login_view(
         ft.Column(
             [
                 ft.Text("Log in", size=20, weight=ft.FontWeight.W_700, color=C.INK),
+                ft.Text(
+                    "You'll stay signed in on this device until you choose Log out.",
+                    size=13,
+                    color=C.MUTED,
+                ),
                 log_username,
                 log_password,
                 ft.Container(height=2),
