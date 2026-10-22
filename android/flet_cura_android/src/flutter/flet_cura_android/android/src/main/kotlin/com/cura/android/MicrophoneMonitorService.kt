@@ -18,9 +18,9 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import org.tensorflow.lite.task.audio.classifier.AudioClassifier
-import org.tensorflow.lite.task.core.BaseOptions
-import org.tensorflow.lite.support.audio.TensorAudio
+import com.google.mediapipe.tasks.audio.audioclassifier.AudioClassifier
+import com.google.mediapipe.tasks.components.containers.AudioData
+import com.google.mediapipe.tasks.core.BaseOptions
 import kotlin.math.log10
 import kotlin.math.sqrt
 
@@ -59,12 +59,16 @@ class MicrophoneMonitorService : Service() {
         var noiseSuppressor: NoiseSuppressor? = null
         try {
             val options = AudioClassifier.AudioClassifierOptions.builder()
-                .setBaseOptions(BaseOptions.builder().setNumThreads(2).build())
+                .setBaseOptions(BaseOptions.builder().setModelAssetPath(MODEL_FILE).build())
                 .setMaxResults(CLASS_COUNT)
                 .setScoreThreshold(0f)
                 .build()
-            classifier = AudioClassifier.createFromFileAndOptions(this, MODEL_FILE, options)
-            val tensorAudio = classifier.createInputTensorAudio()
+            classifier = AudioClassifier.createFromOptions(this, options)
+            val audioFormat = AudioData.AudioDataFormat.builder()
+                .setNumOfChannels(1)
+                .setSampleRate(SAMPLE_RATE.toFloat())
+                .build()
+            val audioData = AudioData.create(audioFormat, MODEL_WINDOW_SAMPLES)
             val minBuffer = AudioRecord.getMinBufferSize(
                 SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
             )
@@ -141,10 +145,12 @@ class MicrophoneMonitorService : Service() {
                     frameOffset += copied
                     if (modelSamples == MODEL_WINDOW_SAMPLES) {
                         val windowDbfs = levels(modelWindow, modelWindow.size).first
-                        tensorAudio.load(modelWindow)
-                        val scores = classifier.classify(tensorAudio)
-                            .flatMap { it.categories }
-                            .associate { it.label.trim().lowercase() to it.score }
+                        audioData.load(modelWindow)
+                        val scores = classifier.classify(audioData)
+                            .classificationResults()
+                            .flatMap { it.classifications() }
+                            .flatMap { it.categories() }
+                            .associate { it.categoryName().trim().lowercase() to it.score() }
                         val impactScore = maxScore(scores, IMPACT_LABELS)
                         val screamScore = maxScore(scores, SCREAM_LABELS)
                         val impulseRecent = now <= candidateUntil
