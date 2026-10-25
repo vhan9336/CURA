@@ -6,6 +6,8 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.ActivityNotFoundException
+import android.net.Uri
 import android.os.Build
 import android.telephony.SmsManager
 import androidx.core.app.ActivityCompat
@@ -65,10 +67,32 @@ class CuraAndroidPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                     result.success(null)
                 }
                 "sendEmergencySms" -> sendEmergencySms(call, result)
+                "openArticleInChrome" -> openArticleInChrome(call, result)
                 else -> result.notImplemented()
             }
         } catch (error: Exception) {
             result.error("cura_android_error", error.message ?: error.javaClass.simpleName, null)
+        }
+    }
+
+    private fun openArticleInChrome(call: MethodCall, result: MethodChannel.Result) {
+        val currentActivity = activity
+        if (currentActivity == null) {
+            result.error("activity_unavailable", "Open CURA before opening a resource.", null)
+            return
+        }
+        val url = call.argument<String>("url")?.trim().orEmpty()
+        val uri = Uri.parse(url)
+        if (uri.scheme != "https" || uri.host.isNullOrBlank()) {
+            result.error("invalid_resource_url", "Only secure HTTPS resource links can be opened.", null)
+            return
+        }
+        val intent = Intent(Intent.ACTION_VIEW, uri).setPackage("com.android.chrome")
+        try {
+            currentActivity.startActivity(intent)
+            result.success(null)
+        } catch (_: ActivityNotFoundException) {
+            result.error("chrome_unavailable", "Install or enable Google Chrome to read this article.", null)
         }
     }
 

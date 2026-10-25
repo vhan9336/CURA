@@ -1,0 +1,2 @@
+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
+nvidia/nemotron-3.5-embed-8b:free

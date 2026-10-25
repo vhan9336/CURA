@@ -82,6 +82,10 @@ class CuraAndroid(ft.Service):
             "sendEmergencySms", {"recipients": recipients, "body": body}
         ))
 
+    async def open_in_chrome(self, url: str) -> None:
+        """Open an HTTPS resource directly in Chrome on Android."""
+        await self._invoke_method("openArticleInChrome", {"url": url})
+
 
 def _format_time(value: time) -> str:
     if value.tzinfo is not None:

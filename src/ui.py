@@ -49,6 +49,7 @@ def main(page: ft.Page):
     mobile_monitor = CuraAndroid()
     page.services.append(mobile_monitor)
     page._cura_send_emergency_sms = mobile_monitor.send_emergency_sms
+    page._cura_open_in_chrome = mobile_monitor.open_in_chrome
 
   def start_desktop_audio_monitor():
     nonlocal desktop_audio_stop_event

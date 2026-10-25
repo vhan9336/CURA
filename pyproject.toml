@@ -1,6 +1,6 @@
 [project]
 name = "cura-safety"
-version = "1.0.6"
+version = "1.0.7"
 description = "CURA personal safety companion"
 requires-python = ">=3.10"
 dependencies = [
@@ -15,7 +15,7 @@ module = "ui"
 [tool.flet]
 bundle_id = "com.cura.safety"
 product = "CURA"
-build_number = 9
+build_number = 10
 
 [tool.flet.flutter.pubspec.dependency_overrides]
 jni = "1.1.0"

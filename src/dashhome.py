@@ -879,6 +879,13 @@ def _render_main_dashboard(
 
     # ----- Resources -------------------------------------------------------
     def load_resource_view():
+        async def open_article(url):
+            chrome_opener = getattr(page, "_cura_open_in_chrome", None)
+            if chrome_opener is not None:
+                await chrome_opener(url)
+            else:
+                await page.launch_url(url)
+
         def resource_card(image_url, title, description, link):
             return card(
                 ft.Column(
@@ -898,7 +905,7 @@ def _render_main_dashboard(
                         ft.TextButton(
                             content="Read article",
                             icon=ft.Icons.OPEN_IN_NEW,
-                            on_click=lambda e: page.launch_url(link),
+                            on_click=lambda e: page.run_task(open_article, link),
                             style=ft.ButtonStyle(color=C.PRIMARY),
                         ),
                     ],
@@ -923,7 +930,31 @@ def _render_main_dashboard(
                     "https://fastly.picsum.photos/id/13/2500/1667.jpg?hmac=SoX9UoHhN8HyklRA4A3vcCWJMVtiBXUg0W4ljWTor7s",
                     "Coping with loneliness",
                     "Practical ways to cope with loneliness and build connections.",
-                    "https://www.mentalhealth.org.uk/explore-mental-health/a-z-topics/loneliness",
+                    "https://www.mentalhealth.org.uk/explore-mental-health/loneliness/help-and-advice",
+                ),
+                resource_card(
+                    "https://images.unsplash.com/photo-1511632765486-a01980e01a18?w=600&auto=format&fit=crop&q=60",
+                    "Tips for staying connected",
+                    "Ideas for keeping in touch, finding shared activities, and building supportive relationships.",
+                    "https://www.nia.nih.gov/health/loneliness-and-social-isolation/loneliness-and-social-isolation-tips-staying-connected",
+                ),
+                resource_card(
+                    "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=600&auto=format&fit=crop&q=60",
+                    "How isolation can affect health",
+                    "Learn how loneliness and social isolation can affect mental and physical health.",
+                    "https://www.cdc.gov/social-connectedness/risk-factors/index.html",
+                ),
+                resource_card(
+                    "https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?w=600&auto=format&fit=crop&q=60",
+                    "Building stronger social connections",
+                    "The U.S. Surgeon General’s guidance on strengthening connection in our lives and communities.",
+                    "https://www.hhs.gov/surgeongeneral/reports-and-publications/connection/index.html",
+                ),
+                resource_card(
+                    "https://images.unsplash.com/photo-1521737711867-e3b97375f902?w=600&auto=format&fit=crop&q=60",
+                    "Loneliness and mental health: CDC findings",
+                    "CDC research describes how loneliness and limited social support relate to mental health challenges.",
+                    "https://www.cdc.gov/mmwr/volumes/73/wr/mm7324a1.htm",
                 ),
                 ft.Container(height=8),
             ],
